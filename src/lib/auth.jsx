@@ -81,11 +81,14 @@ export function AuthProvider({ children }) {
   };
 
   const doSignUp = async (email, password, username, photoUrl) => {
-    const u = await auth.signup(email, password, {
+    // Step 1: create the account with metadata
+    await auth.signup(email, password, {
       username,
       photo: photoUrl || null,
     });
-    // After signup, auto-login (Identity may require email confirmation depending on setup)
+
+    // Step 2: immediately sign in. With confirmation disabled in Netlify settings,
+    // this should succeed and they're in.
     try {
       const loggedIn = await auth.login(email, password, true);
       setUser(buildUserObj(loggedIn));
@@ -99,9 +102,16 @@ export function AuthProvider({ children }) {
         });
       } catch {}
       return loggedIn;
-    } catch {
-      // Email confirmation likely required
-      return u;
+    } catch (ex) {
+      // If login fails right after signup, it usually means email confirmation
+      // is still required in Netlify settings. Surface that to the caller.
+      const m = ex.json?.error_description || ex.json?.msg || ex.message || '';
+      if (/confirm/i.test(m) || /not yet confirmed/i.test(m)) {
+        const err = new Error('Account created — but email confirmation is still required in Netlify settings. Disable it under Identity → Registration.');
+        err.confirmRequired = true;
+        throw err;
+      }
+      throw ex;
     }
   };
 
