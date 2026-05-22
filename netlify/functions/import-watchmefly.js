@@ -8,7 +8,7 @@ import { getUserFromContext, unauthorized, forbidden, json, stores, uid } from '
 //   (optional) Balloon: "Name"
 
 export default async (req, context) => {
-  const user = getUserFromContext(context);
+  const user = getUserFromContext(context, req);
   if (!user) return unauthorized();
   if (!user.isAdmin) return forbidden();
 

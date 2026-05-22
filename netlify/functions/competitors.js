@@ -2,7 +2,7 @@ import { getUserFromContext, unauthorized, forbidden, json, stores, uid } from '
 import { calculateOdds } from './_odds.js';
 
 export default async (req, context) => {
-  const user = getUserFromContext(context);
+  const user = getUserFromContext(context, req);
   if (!user) return unauthorized();
   if (!user.isAdmin) return forbidden();
 

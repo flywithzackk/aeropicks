@@ -1096,3 +1096,329 @@ iframe#netlify-identity-widget {
   .wager-bar-stats { gap: 22px; }
   .panel { padding: 20px; }
 }
+
+/* ============ ANIMATED HERO LOGO ============ */
+.animated-logo {
+  position: relative;
+  width: 100%;
+  max-width: 480px;
+  margin: 0 auto;
+  aspect-ratio: 16 / 11;
+}
+
+.animated-logo img {
+  position: absolute;
+  left: 50%;
+  width: 100%;
+  height: auto;
+  transform: translateX(-50%);
+}
+
+/* The AEROPICKS wordmark - fades in first */
+.animated-logo .anim-word {
+  top: 18%;
+  width: 92%;
+  opacity: 0;
+  animation: wordIn 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s forwards;
+}
+
+/* Target X - slides up from below the word */
+.animated-logo .anim-target {
+  top: 56%;
+  width: 100%;
+  opacity: 0;
+  transform: translate(-50%, 18px) scale(0.85);
+  animation: targetIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 1s forwards;
+}
+
+/* Baggie - drops from above and lands in the 'i' */
+.animated-logo .anim-baggie {
+  /* Position to land on the 'i' of AEROPICKS - roughly 70% from left of word */
+  top: -40%;
+  left: 72%;
+  width: 9.5%;
+  opacity: 0;
+  transform: translateX(-50%) rotate(-15deg);
+  animation: baggieDrop 0.55s cubic-bezier(0.55, 0, 0.65, 1) 1.55s forwards,
+             baggieBounce 0.35s ease-out 2.1s forwards;
+}
+
+@keyframes wordIn {
+  0%   { opacity: 0; transform: translate(-50%, 12px) scale(0.94); }
+  100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+@keyframes targetIn {
+  0%   { opacity: 0; transform: translate(-50%, 18px) scale(0.85); }
+  100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
+}
+
+@keyframes baggieDrop {
+  0% {
+    opacity: 0;
+    top: -60%;
+    transform: translateX(-50%) rotate(-15deg) scale(1.1);
+  }
+  20% {
+    opacity: 1;
+  }
+  100% {
+    opacity: 1;
+    top: 14%; /* lands as the dot of the 'i' */
+    transform: translateX(-50%) rotate(0deg) scale(1);
+  }
+}
+
+@keyframes baggieBounce {
+  0%   { transform: translateX(-50%) translateY(0) rotate(0deg); }
+  35%  { transform: translateX(-50%) translateY(-6px) rotate(2deg); }
+  70%  { transform: translateX(-50%) translateY(-2px) rotate(-1deg); }
+  100% { transform: translateX(-50%) translateY(0) rotate(0deg); }
+}
+
+/* ============ RGC FEATURE CARD ============ */
+.rgc-feature {
+  position: relative;
+  background: var(--surface);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-xl);
+  overflow: hidden;
+  box-shadow: var(--shadow-md);
+}
+
+.rgc-feature-banner {
+  height: 220px;
+  background-size: cover;
+  background-position: center;
+  background-repeat: no-repeat;
+  position: relative;
+}
+
+.rgc-feature-banner::after {
+  content: '';
+  position: absolute;
+  inset: 0;
+  background: linear-gradient(180deg, transparent 0%, rgba(21, 23, 28, 0.5) 60%, var(--surface) 100%);
+}
+
+.rgc-feature-content {
+  padding: 0 36px 36px;
+  display: flex;
+  gap: 28px;
+  align-items: flex-start;
+  margin-top: -80px;
+  position: relative;
+  z-index: 2;
+}
+
+.rgc-feature-logo {
+  width: 180px;
+  height: auto;
+  flex-shrink: 0;
+  filter: drop-shadow(0 8px 24px rgba(0, 0, 0, 0.5));
+}
+
+.rgc-feature-info {
+  flex: 1;
+  padding-top: 90px;
+}
+
+@media (max-width: 720px) {
+  .rgc-feature-banner { height: 160px; }
+  .rgc-feature-content { flex-direction: column; gap: 16px; align-items: center; padding: 0 22px 28px; text-align: center; margin-top: -60px; }
+  .rgc-feature-logo { width: 140px; }
+  .rgc-feature-info { padding-top: 0; }
+}
+
+/* ============ COMPREHENSIVE MOBILE LAYOUT ============ */
+
+/* iPhone / standard mobile - below 768px */
+@media (max-width: 768px) {
+  /* Tighten outer shell */
+  .shell { padding: 0 16px; }
+
+  /* Hero text sizes */
+  .display { font-size: clamp(54px, 14vw, 88px) !important; line-height: 0.9; }
+  .h1-display { font-size: clamp(38px, 9vw, 64px) !important; }
+  .h2-display { font-size: clamp(28px, 7vw, 44px) !important; }
+  .h2 { font-size: 20px !important; }
+
+  /* Nav adjustments */
+  .nav { padding: 12px 0; }
+  .nav-inner { gap: 8px; }
+  .brand-logo { height: 30px; }
+  .nav-links { gap: 4px; }
+  .nav-link {
+    padding: 7px 9px;
+    font-size: 13px;
+  }
+  .points-chip {
+    font-size: 11px;
+    padding: 6px 8px 6px 12px;
+  }
+  .points-chip .pts-num { font-size: 16px; }
+
+  /* Hero grid - stack vertically */
+  .hero-grid {
+    grid-template-columns: 1fr !important;
+    gap: 24px !important;
+  }
+  .landing-grid {
+    grid-template-columns: 1fr !important;
+    gap: 32px !important;
+  }
+  .hero {
+    padding: 28px 0 24px !important;
+  }
+
+  /* Stat panels full width on mobile */
+  .stat-panel {
+    width: 100%;
+    flex-direction: row;
+    gap: 0;
+    overflow-x: auto;
+  }
+  .stat-row {
+    flex: 1;
+    flex-direction: column;
+    gap: 4px;
+    align-items: flex-start;
+    padding: 12px 14px;
+    border-top: none !important;
+    border-right: 1px solid var(--line);
+  }
+  .stat-row:last-child { border-right: none; }
+  .stat-row + .stat-row { border-top: none !important; }
+  .stat-row .stat-value { font-size: 24px; }
+  .stat-row .stat-label { font-size: 11px; }
+
+  /* Pilot grid - 1 column on mobile */
+  .pilot-grid {
+    grid-template-columns: 1fr !important;
+    gap: 12px;
+  }
+  .pilot-card {
+    padding: 14px !important;
+  }
+
+  /* Card grid (competitions) - 1 column */
+  .card-grid {
+    grid-template-columns: 1fr !important;
+    gap: 14px;
+  }
+
+  /* Step grid */
+  .step-grid {
+    grid-template-columns: 1fr 1fr !important;
+    gap: 12px !important;
+  }
+  .step-card { padding: 18px !important; }
+  .step-num { font-size: 36px !important; }
+
+  /* Wager bar - mobile fixed bottom */
+  .wager-bar {
+    position: fixed;
+    bottom: 12px;
+    left: 12px;
+    right: 12px;
+    margin: 0;
+    padding: 12px 14px 12px 18px;
+    border-radius: var(--r-lg);
+    gap: 12px;
+  }
+  .wager-bar-stats { gap: 16px; }
+  .wager-bar .stat .val { font-size: 28px; }
+  .wager-bar .stat .lbl { font-size: 10px; }
+  .wager-bar .btn { padding: 12px 18px; font-size: 14px; }
+
+  /* Add bottom padding so floating wager bar doesn't cover content */
+  main.shell {
+    padding-bottom: 90px;
+  }
+
+  /* Panels */
+  .panel { padding: 18px; border-radius: var(--r-lg); }
+  .panel-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 16px;
+    padding-bottom: 14px;
+  }
+
+  /* Tables - allow horizontal scroll without breaking layout */
+  .table-wrap {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+  }
+  .table {
+    min-width: 560px;
+  }
+  .table th, .table td {
+    padding: 10px 12px !important;
+    font-size: 13px;
+  }
+  .table th:first-child, .table td:first-child { padding-left: 16px !important; }
+  .table th:last-child,  .table td:last-child  { padding-right: 16px !important; }
+
+  /* Admin tabs - horizontal scroll if many */
+  .tabs {
+    overflow-x: auto;
+    -webkit-overflow-scrolling: touch;
+    flex-wrap: nowrap;
+    padding-bottom: 2px;
+    scrollbar-width: none;
+  }
+  .tabs::-webkit-scrollbar { display: none; }
+  .tab {
+    flex-shrink: 0;
+    padding: 10px 14px;
+    font-size: 13px;
+  }
+
+  /* Pick sheet (modal) - full mobile height */
+  .pick-sheet {
+    max-height: 90vh;
+    overflow-y: auto;
+  }
+
+  /* Buttons */
+  .btn-lg { padding: 14px 22px; font-size: 15px; }
+  .btn { padding: 11px 18px; font-size: 14px; }
+  .btn-sm { padding: 8px 14px; font-size: 13px; }
+
+  /* Section heads */
+  .section-head {
+    flex-direction: column;
+    align-items: flex-start;
+    gap: 8px;
+    margin-bottom: 16px;
+  }
+
+  /* Forms - one column */
+  .row {
+    grid-template-columns: 1fr !important;
+    gap: 8px;
+  }
+
+  /* Footer */
+  .footer {
+    flex-direction: column;
+    gap: 8px;
+    text-align: center;
+    padding: 32px 16px;
+  }
+
+  /* Animated logo smaller on mobile */
+  .animated-logo {
+    max-width: 88vw;
+  }
+}
+
+/* Very small phones - 380px and below */
+@media (max-width: 380px) {
+  .display { font-size: 46px !important; }
+  .h1-display { font-size: 32px !important; }
+  .nav-link { padding: 6px 7px; font-size: 12px; }
+  .points-chip { display: none; } /* hide on tiny screens to save space */
+}

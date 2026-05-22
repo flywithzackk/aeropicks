@@ -1,7 +1,7 @@
 import { getUserFromContext, unauthorized, json, stores } from './_shared.js';
 
 export default async (req, context) => {
-  const user = getUserFromContext(context);
+  const user = getUserFromContext(context, req);
   if (!user) return unauthorized();
 
   const winningsStore = stores.winnings();

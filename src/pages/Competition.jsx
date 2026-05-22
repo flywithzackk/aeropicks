@@ -328,7 +328,7 @@ function PickSheet({ pilot, selectedPlace, setSelectedPlace, pointInput, setPoin
       display: 'flex', alignItems: 'flex-end', justifyContent: 'center', zIndex: 90,
       animation: 'fadeUp 0.2s',
     }} onClick={onCancel}>
-      <div onClick={e => e.stopPropagation()} style={{
+      <div onClick={e => e.stopPropagation()} className="pick-sheet" style={{
         background: 'var(--surface)', width: '100%', maxWidth: 560,
         borderRadius: 'var(--r-xl) var(--r-xl) 0 0', padding: 24, paddingBottom: 28,
         boxShadow: 'var(--shadow-pop)',

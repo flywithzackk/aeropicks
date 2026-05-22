@@ -1,10 +1,10 @@
 import { useAuth } from '../lib/auth.jsx';
 
 const STEPS = [
-  { num: '01', color: 'var(--sky)', title: 'Get Your Stake', body: 'Every new member is credited 1,000 points the moment they join.' },
+  { num: '01', color: 'var(--sky)', title: 'Get Your Stake', body: 'Each round every member is credited 1,000 points.' },
   { num: '02', color: 'var(--electric)', title: 'Study the Field', body: 'Browse the pilot roster for each competition with live odds.' },
   { num: '03', color: 'var(--coral)', title: 'Place Your Picks', body: 'Spread points across as many or as few pilots as you like.' },
-  { num: '04', color: 'var(--violet)', title: 'Watch It Fly', body: 'Wagers lock at flight time. Standings post when the dust settles.' },
+  { num: '04', color: 'var(--violet)', title: 'Watch Them Fly', body: 'Wagers lock at flight time. Standings are posted when scores are released.' },
 ];
 
 export default function Landing() {
@@ -37,8 +37,8 @@ export default function Landing() {
                 Drop your <span style={{ color: 'var(--sky)' }}>mark.</span>
               </h1>
               <p className="body fade-up" style={{ animationDelay: '0.16s', marginTop: 24, maxWidth: 460, fontSize: 18 }}>
-                The wagering floor for hot air balloon competition. Get 1,000 points,
-                back the pilots you believe in, and see who reads the wind best.
+                The wagering floor for competition ballooning. Back the pilots you believe in
+                and see who becomes victorious.
               </p>
               <div className="fade-up" style={{ animationDelay: '0.24s', marginTop: 32, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <button className="btn btn-sky btn-lg" onClick={signup}>
@@ -50,9 +50,12 @@ export default function Landing() {
               </div>
             </div>
 
-            <div className="hero-logo-wrap fade-up" style={{ animationDelay: '0.12s' }}>
-              <div className="hero-logo-glow" />
-              <img src="/logos/Aeropicks-target.png" alt="Aeropicks" className="hero-logo" style={{ animation: 'floaty 7s ease-in-out infinite' }} />
+            <div className="hero-logo-wrap">
+              <div className="animated-logo">
+                <img src="/logos/Aeropicks-Word.png" alt="" className="anim-word" />
+                <img src="/logos/Targetnobaggie.png" alt="" className="anim-target" />
+                <img src="/logos/Baggie.png" alt="" className="anim-baggie" />
+              </div>
             </div>
           </div>
         </section>
@@ -75,19 +78,22 @@ export default function Landing() {
           </div>
         </section>
 
-        <section style={{ marginTop: 48 }}>
-          <div className="cta-banner fade-up" style={{ animationDelay: '0.6s' }}>
-            <div className="cta-banner-glow" />
-            <div style={{ position: 'relative' }}>
-              <div className="kicker" style={{ color: 'var(--sky)', marginBottom: 8 }}>First Competition</div>
-              <h2 className="h1-display" style={{ color: 'var(--bg)' }}>Rio Grande Classic 2026</h2>
-              <p className="small" style={{ color: 'rgba(251,251,249,0.6)', marginTop: 6 }}>
-                31 pilots · Rio Rancho, New Mexico
-              </p>
+        {/* RGC Featured Competition */}
+        <section style={{ marginTop: 64 }}>
+          <div className="rgc-feature fade-up">
+            <div className="rgc-feature-banner" style={{ backgroundImage: 'url(/rgc/banner.png)' }} />
+            <div className="rgc-feature-content">
+              <img src="/rgc/logo.png" alt="Rio Grande Classic 2026" className="rgc-feature-logo" />
+              <div className="rgc-feature-info">
+                <div className="kicker" style={{ color: 'var(--sky)', marginBottom: 8 }}>Now Live · First Competition</div>
+                <h2 className="h1-display" style={{ marginBottom: 6 }}>Rio Grande Classic 2026</h2>
+                <p className="small" style={{ marginBottom: 6 }}>NM State & Southwest Regional Championship</p>
+                <p className="small" style={{ color: 'var(--ink-mute)' }}>31 pilots · Rio Rancho, New Mexico</p>
+                <button className="btn btn-sky btn-lg" style={{ marginTop: 20 }} onClick={signup}>
+                  Join the Floor →
+                </button>
+              </div>
             </div>
-            <button className="btn btn-sky btn-lg" style={{ position: 'relative' }} onClick={signup}>
-              Join the Floor →
-            </button>
           </div>
         </section>
       </main>

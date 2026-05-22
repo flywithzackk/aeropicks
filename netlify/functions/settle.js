@@ -13,7 +13,7 @@ import { getUserFromContext, unauthorized, forbidden, json, stores } from './_sh
 const WILDCARD_BONUS = 500;
 
 export default async (req, context) => {
-  const user = getUserFromContext(context);
+  const user = getUserFromContext(context, req);
   if (!user) return unauthorized();
   if (!user.isAdmin) return forbidden();
 

@@ -8,7 +8,7 @@ import { getUserFromContext, unauthorized, json, stores } from './_shared.js';
 // Wildcard: a free guess. { pilotId } or { value } depending on wildcard type.
 
 export default async (req, context) => {
-  const user = getUserFromContext(context);
+  const user = getUserFromContext(context, req);
   if (!user) return unauthorized();
 
   const betsStore = stores.bets();
