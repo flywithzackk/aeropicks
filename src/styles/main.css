@@ -1101,9 +1101,9 @@ iframe#netlify-identity-widget {
 .animated-logo {
   position: relative;
   width: 100%;
-  max-width: 520px;
+  max-width: 560px;
   margin: 0 auto;
-  aspect-ratio: 16 / 13;
+  aspect-ratio: 16 / 14;
 }
 
 .animated-logo img {
@@ -1113,36 +1113,40 @@ iframe#netlify-identity-widget {
   transform: translateX(-50%);
 }
 
-/* AEROPICKS wordmark - BIG at the top, sits in front (z-index 3) */
+/* AEROPICKS wordmark - DOMINANT and large at the top */
 .animated-logo .anim-word {
-  top: 4%;
-  width: 100%;
+  top: 0;
+  width: 110%;
   z-index: 3;
   opacity: 0;
   animation: wordIn 0.7s cubic-bezier(0.34, 1.56, 0.64, 1) 0.3s forwards;
 }
 
-/* Target X - sits at the bottom, in front (z-index 2) */
+/* Target X - sits at the bottom */
 .animated-logo .anim-target {
-  bottom: 4%;
-  width: 92%;
+  bottom: 6%;
+  width: 88%;
   z-index: 2;
   opacity: 0;
   transform: translate(-50%, 18px) scale(0.85);
   animation: targetIn 0.6s cubic-bezier(0.34, 1.56, 0.64, 1) 1s forwards;
 }
 
-/* Baggie - drops from above, falls BEHIND the wordmark (z-index 1), lands on X center */
+/*
+  Baggie: starts above, drops behind the wordmark, lands flat on the X.
+  "Flat" = rotated 90° at landing (laying on its side as if dropped from above).
+  The center of the X is around 80% from the top of the container.
+*/
 .animated-logo .anim-baggie {
-  top: -25%;
+  top: -20%;
   left: 50%;
-  width: 11%;
+  width: 10%;
   z-index: 1;
   opacity: 0;
   transform: translateX(-50%) rotate(-8deg);
   animation:
-    baggieDrop 0.7s cubic-bezier(0.55, 0.05, 0.65, 1) 1.55s forwards,
-    baggieBounce 0.45s ease-out 2.25s forwards;
+    baggieDrop 0.75s cubic-bezier(0.55, 0.05, 0.65, 1) 1.55s forwards,
+    baggieFlatten 0.4s ease-out 2.3s forwards;
 }
 
 @keyframes wordIn {
@@ -1155,29 +1159,38 @@ iframe#netlify-identity-widget {
   100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
 }
 
-/* Baggie falls from above, lands at ~76% from top (center of the X target) */
+/* Falls straight down, behind the wordmark, lands on the X */
 @keyframes baggieDrop {
   0% {
     opacity: 0;
-    top: -25%;
+    top: -20%;
     transform: translateX(-50%) rotate(-8deg) scale(1.05);
   }
-  15% {
-    opacity: 1;
-  }
+  15% { opacity: 1; }
   100% {
     opacity: 1;
     top: 70%;
-    transform: translateX(-50%) rotate(0deg) scale(0.95);
+    transform: translateX(-50%) rotate(0deg) scale(1);
   }
 }
 
-/* Bounce on landing — like an actual baggie hitting the ground */
-@keyframes baggieBounce {
-  0%   { top: 70%; transform: translateX(-50%) rotate(0deg) scale(0.95); }
-  30%  { top: 64%; transform: translateX(-50%) rotate(2deg) scale(1); }
-  60%  { top: 68%; transform: translateX(-50%) rotate(-1deg) scale(0.97); }
-  100% { top: 67%; transform: translateX(-50%) rotate(0deg) scale(1); }
+/*
+  After landing, the baggie "falls flat" - rotates 90° and squishes slightly
+  to give the visual impression of laying flat on the target floor.
+*/
+@keyframes baggieFlatten {
+  0% {
+    top: 70%;
+    transform: translateX(-50%) rotate(0deg) scaleY(1) scaleX(1);
+  }
+  50% {
+    top: 72%;
+    transform: translateX(-50%) rotate(45deg) scaleY(0.8) scaleX(1.1);
+  }
+  100% {
+    top: 74%;
+    transform: translateX(-50%) rotate(90deg) scaleY(0.55) scaleX(1.25);
+  }
 }
 
 /* ============ RGC FEATURE CARD ============ */
