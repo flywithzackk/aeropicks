@@ -53,9 +53,7 @@ export default function Landing() {
             <div className="hero-logo-wrap">
               <div className="animated-logo">
                 <img src="/logos/Aeropicks-Word-WBW.png" alt="" className="anim-word" />
-                <img src="/logos/new-target.png" alt="" className="anim-target anim-target-empty" />
-                <img src="/logos/TRGTBAGGIE_CENTER.png" alt="" className="anim-target anim-target-hit" />
-                <img src="/logos/TRGTBAGGIElayover.png" alt="" className="anim-target anim-target-flat" />
+                <img src="/logos/new-target.png" alt="" className="anim-target" />
                 <img src="/logos/Baggie.png" alt="" className="anim-baggie" />
               </div>
             </div>
