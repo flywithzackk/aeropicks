@@ -78,8 +78,17 @@ export default function Leaderboard() {
                       ) : `#${row.rank}`}
                     </td>
                     <td className="cell-name" style={{ color: row.isYou ? 'var(--lime)' : 'var(--ink)' }}>
-                      {row.label}
-                      {row.isYou && <span className="tag" style={{ marginLeft: 8, background: 'var(--lime)', color: '#fff' }}>You</span>}
+                      <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
+                        {row.photo ? (
+                          <img src={row.photo} alt="" style={{ width: 32, height: 32, borderRadius: 'var(--r-pill)', objectFit: 'cover' }} />
+                        ) : (
+                          <div style={{ width: 32, height: 32, borderRadius: 'var(--r-pill)', background: 'var(--bg-tint)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--display)', fontSize: 14, color: 'var(--ink-mute)' }}>
+                            {(row.username || '?')[0]?.toUpperCase()}
+                          </div>
+                        )}
+                        <span>{row.username}</span>
+                        {row.isYou && <span className="tag" style={{ background: 'var(--lime)', color: '#fff' }}>You</span>}
+                      </div>
                     </td>
                     <td className="mono">{row.competitionsWon}</td>
                     <td style={{ textAlign: 'right', paddingRight: 24, fontFamily: 'var(--display)', fontSize: 24, color: 'var(--lime)' }}>

@@ -1,0 +1,302 @@
+import { useState, useRef } from 'react';
+import { useAuth } from './auth.jsx';
+import { useToast } from './toast.jsx';
+
+export function AuthModal() {
+  const { authModal, closeAuth, switchMode } = useAuth();
+  if (!authModal) return null;
+
+  return (
+    <div className="auth-overlay" onClick={closeAuth}>
+      <div className="auth-card" onClick={(e) => e.stopPropagation()}>
+        <button className="auth-close" onClick={closeAuth} aria-label="Close">×</button>
+        <div className="auth-brand">
+          <img src="/logos/aeropickswordwbaggie.png" alt="Aeropicks" />
+        </div>
+        {authModal === 'signin' && <SignInForm switchMode={switchMode} closeAuth={closeAuth} />}
+        {authModal === 'signup' && <SignUpForm switchMode={switchMode} closeAuth={closeAuth} />}
+        {authModal === 'forgot' && <ForgotForm switchMode={switchMode} closeAuth={closeAuth} />}
+      </div>
+    </div>
+  );
+}
+
+function SignInForm({ switchMode, closeAuth }) {
+  const { doSignIn } = useAuth();
+  const { showToast } = useToast();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr('');
+    setLoading(true);
+    try {
+      await doSignIn(email.trim(), password);
+      showToast('Welcome back');
+      closeAuth();
+    } catch (ex) {
+      setErr(ex.json?.error_description || ex.message || 'Sign in failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="auth-head">
+        <div className="kicker">Sign In</div>
+        <h2 className="h1-display" style={{ fontSize: 36 }}>Welcome back.</h2>
+      </div>
+      <form className="auth-form" onSubmit={submit}>
+        <div className="field">
+          <label>Email</label>
+          <input
+            className="input"
+            type="email"
+            value={email}
+            onChange={(e) => setEmail(e.target.value)}
+            placeholder="you@example.com"
+            required
+            autoFocus
+          />
+        </div>
+        <div className="field">
+          <label>Password</label>
+          <input
+            className="input"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="••••••••"
+            required
+          />
+        </div>
+        {err && <div className="auth-err">{err}</div>}
+        <button className="btn btn-sky btn-lg" type="submit" disabled={loading} style={{ width: '100%', marginTop: 8 }}>
+          {loading ? 'Signing in…' : 'Sign In →'}
+        </button>
+      </form>
+      <div className="auth-foot">
+        <button className="link-btn" onClick={() => switchMode('forgot')}>Forgot password?</button>
+        <span className="auth-foot-sep">·</span>
+        <button className="link-btn" onClick={() => switchMode('signup')}>Create account</button>
+      </div>
+    </>
+  );
+}
+
+function SignUpForm({ switchMode, closeAuth }) {
+  const { doSignUp } = useAuth();
+  const { showToast } = useToast();
+  const [email, setEmail] = useState('');
+  const [password, setPassword] = useState('');
+  const [username, setUsername] = useState('');
+  const [photo, setPhoto] = useState(null);
+  const [photoPreview, setPhotoPreview] = useState(null);
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+  const fileRef = useRef(null);
+
+  const onPhotoSelect = async (e) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    if (file.size > 4 * 1024 * 1024) {
+      setErr('Photo must be under 4 MB');
+      return;
+    }
+    setErr('');
+    // Resize/compress client-side to reduce upload size and standardize format
+    const img = new Image();
+    const reader = new FileReader();
+    reader.onload = (ev) => { img.src = ev.target.result; };
+    img.onload = () => {
+      const max = 400;
+      const scale = Math.min(1, max / Math.max(img.width, img.height));
+      const w = Math.round(img.width * scale);
+      const h = Math.round(img.height * scale);
+      const canvas = document.createElement('canvas');
+      canvas.width = w;
+      canvas.height = h;
+      const ctx = canvas.getContext('2d');
+      ctx.drawImage(img, 0, 0, w, h);
+      const dataUrl = canvas.toDataURL('image/jpeg', 0.85);
+      setPhoto(dataUrl);
+      setPhotoPreview(dataUrl);
+    };
+    reader.readAsDataURL(file);
+  };
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr('');
+    if (username.trim().length < 3) {
+      setErr('Username must be at least 3 characters');
+      return;
+    }
+    if (password.length < 8) {
+      setErr('Password must be at least 8 characters');
+      return;
+    }
+    setLoading(true);
+    try {
+      let photoUrl = null;
+      if (photo) {
+        // Upload via function so the blob is stored centrally
+        const res = await fetch('/api/upload-photo', {
+          method: 'POST',
+          headers: { 'Content-Type': 'application/json' },
+          body: JSON.stringify({ data: photo }),
+        });
+        const data = await res.json();
+        if (res.ok && data.url) photoUrl = data.url;
+      }
+      await doSignUp(email.trim(), password, username.trim(), photoUrl);
+      showToast(`Welcome, ${username.trim()}`);
+      closeAuth();
+    } catch (ex) {
+      setErr(ex.json?.error_description || ex.message || 'Sign up failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="auth-head">
+        <div className="kicker">Create Account</div>
+        <h2 className="h1-display" style={{ fontSize: 36 }}>Get on the floor.</h2>
+        <p className="small" style={{ marginTop: 8 }}>1,000 points each round. Pick well.</p>
+      </div>
+      <form className="auth-form" onSubmit={submit}>
+        <div className="signup-grid">
+          <div className="signup-photo">
+            <button
+              type="button"
+              className="photo-upload"
+              onClick={() => fileRef.current?.click()}
+              style={photoPreview ? { backgroundImage: `url(${photoPreview})` } : {}}
+            >
+              {!photoPreview && <span>+ Photo</span>}
+            </button>
+            <input
+              ref={fileRef}
+              type="file"
+              accept="image/*"
+              onChange={onPhotoSelect}
+              style={{ display: 'none' }}
+            />
+            <p className="small" style={{ textAlign: 'center', marginTop: 6, fontSize: 11 }}>Optional</p>
+          </div>
+          <div style={{ flex: 1 }}>
+            <div className="field">
+              <label>Username</label>
+              <input
+                className="input"
+                value={username}
+                onChange={(e) => setUsername(e.target.value)}
+                placeholder="aeropilot"
+                required
+                minLength={3}
+                maxLength={20}
+              />
+            </div>
+            <div className="field">
+              <label>Email</label>
+              <input
+                className="input"
+                type="email"
+                value={email}
+                onChange={(e) => setEmail(e.target.value)}
+                placeholder="you@example.com"
+                required
+              />
+            </div>
+            <div className="field">
+              <label>Password</label>
+              <input
+                className="input"
+                type="password"
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
+                placeholder="At least 8 characters"
+                required
+                minLength={8}
+              />
+            </div>
+          </div>
+        </div>
+        {err && <div className="auth-err">{err}</div>}
+        <button className="btn btn-sky btn-lg" type="submit" disabled={loading} style={{ width: '100%', marginTop: 8 }}>
+          {loading ? 'Creating…' : 'Claim 1,000 Points →'}
+        </button>
+      </form>
+      <div className="auth-foot">
+        <span className="small">Already have an account?</span>
+        <button className="link-btn" onClick={() => switchMode('signin')}>Sign in</button>
+      </div>
+    </>
+  );
+}
+
+function ForgotForm({ switchMode }) {
+  const { doForgotPassword } = useAuth();
+  const { showToast } = useToast();
+  const [email, setEmail] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [sent, setSent] = useState(false);
+  const [err, setErr] = useState('');
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr('');
+    setLoading(true);
+    try {
+      await doForgotPassword(email.trim());
+      setSent(true);
+      showToast('Check your email');
+    } catch (ex) {
+      setErr(ex.json?.error_description || ex.message || 'Reset failed');
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="auth-head">
+        <div className="kicker">Password Reset</div>
+        <h2 className="h1-display" style={{ fontSize: 36 }}>Reset it.</h2>
+      </div>
+      {!sent ? (
+        <form className="auth-form" onSubmit={submit}>
+          <div className="field">
+            <label>Email</label>
+            <input
+              className="input"
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="you@example.com"
+              required
+              autoFocus
+            />
+          </div>
+          {err && <div className="auth-err">{err}</div>}
+          <button className="btn btn-sky btn-lg" type="submit" disabled={loading} style={{ width: '100%' }}>
+            {loading ? 'Sending…' : 'Send reset link'}
+          </button>
+        </form>
+      ) : (
+        <p className="body" style={{ textAlign: 'center', padding: '20px 0' }}>
+          Check your email for a reset link.
+        </p>
+      )}
+      <div className="auth-foot">
+        <button className="link-btn" onClick={() => switchMode('signin')}>Back to sign in</button>
+      </div>
+    </>
+  );
+}

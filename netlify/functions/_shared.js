@@ -67,6 +67,8 @@ export const stores = {
   bets: () => getStore('bets'),
   balances: () => getStore('balances'),
   winnings: () => getStore('winnings'),
+  photos: () => getStore('photos'),
+  profiles: () => getStore('profiles'),
 };
 
 export function uid() {
