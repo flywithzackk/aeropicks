@@ -1133,17 +1133,17 @@ iframe#netlify-identity-widget {
 }
 
 /*
-  Baggie: starts above, drops behind the wordmark, lands flat on the X.
-  "Flat" = rotated 90° at landing (laying on its side as if dropped from above).
-  The center of the X is around 80% from the top of the container.
+  Baggie: drops from above, falls behind wordmark, lands CENTERED on the X.
+  Using translate(-50%, -50%) so positioning refers to the baggie's center.
 */
 .animated-logo .anim-baggie {
-  top: -20%;
+  top: -10%;
   left: 50%;
-  width: 10%;
+  width: 9%;
   z-index: 1;
   opacity: 0;
-  transform: translateX(-50%) rotate(-8deg);
+  transform-origin: center bottom;
+  transform: translate(-50%, -50%) rotate(-8deg);
   animation:
     baggieDrop 0.75s cubic-bezier(0.55, 0.05, 0.65, 1) 1.55s forwards,
     baggieFlatten 0.4s ease-out 2.3s forwards;
@@ -1159,37 +1159,36 @@ iframe#netlify-identity-widget {
   100% { opacity: 1; transform: translate(-50%, 0) scale(1); }
 }
 
-/* Falls straight down, behind the wordmark, lands on the X */
+/*
+  Falls from above. Lands with its center at 77% from top of container = center of X target.
+  Uses translate(-50%, -50%) so top/left refer to the baggie's CENTER, not its corner.
+*/
 @keyframes baggieDrop {
   0% {
     opacity: 0;
-    top: -20%;
-    transform: translateX(-50%) rotate(-8deg) scale(1.05);
+    top: -10%;
+    transform: translate(-50%, -50%) rotate(-8deg) scale(1.05);
   }
   15% { opacity: 1; }
   100% {
     opacity: 1;
-    top: 70%;
-    transform: translateX(-50%) rotate(0deg) scale(1);
+    top: 77%;
+    transform: translate(-50%, -50%) rotate(0deg) scale(1);
   }
 }
 
 /*
-  After landing, the baggie "falls flat" - rotates 90° and squishes slightly
-  to give the visual impression of laying flat on the target floor.
+  After landing, tips over to lay flat. The baggie's bottom edge stays anchored at the X
+  center while the top swings over (transform-origin: center bottom).
 */
 @keyframes baggieFlatten {
   0% {
-    top: 70%;
-    transform: translateX(-50%) rotate(0deg) scaleY(1) scaleX(1);
-  }
-  50% {
-    top: 72%;
-    transform: translateX(-50%) rotate(45deg) scaleY(0.8) scaleX(1.1);
+    top: 77%;
+    transform: translate(-50%, -50%) rotate(0deg) scaleY(1) scaleX(1);
   }
   100% {
-    top: 74%;
-    transform: translateX(-50%) rotate(90deg) scaleY(0.55) scaleX(1.25);
+    top: 77%;
+    transform: translate(-50%, -50%) rotate(90deg) scaleY(0.55) scaleX(1.3);
   }
 }
 
