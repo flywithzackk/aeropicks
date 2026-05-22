@@ -6,16 +6,23 @@ export function AuthModal() {
   const { authModal, closeAuth, switchMode } = useAuth();
   if (!authModal) return null;
 
+  // Only close if the click is DIRECTLY on the overlay backdrop, not bubbled from inside.
+  // Use mousedown so it triggers before focus events can interfere.
+  const onOverlayMouseDown = (e) => {
+    if (e.target === e.currentTarget) closeAuth();
+  };
+
   return (
-    <div className="auth-overlay" onClick={closeAuth}>
-      <div className="auth-card" onClick={(e) => e.stopPropagation()}>
-        <button className="auth-close" onClick={closeAuth} aria-label="Close">×</button>
+    <div className="auth-overlay" onMouseDown={onOverlayMouseDown}>
+      <div className="auth-card">
+        <button className="auth-close" onClick={closeAuth} aria-label="Close" type="button">×</button>
         <div className="auth-brand">
           <img src="/logos/aeropickswordwbaggie.png" alt="Aeropicks" />
         </div>
         {authModal === 'signin' && <SignInForm switchMode={switchMode} closeAuth={closeAuth} />}
         {authModal === 'signup' && <SignUpForm switchMode={switchMode} closeAuth={closeAuth} />}
         {authModal === 'forgot' && <ForgotForm switchMode={switchMode} closeAuth={closeAuth} />}
+        {authModal === 'recover' && <RecoverForm switchMode={switchMode} closeAuth={closeAuth} />}
       </div>
     </div>
   );
@@ -24,7 +31,7 @@ export function AuthModal() {
 function SignInForm({ switchMode, closeAuth }) {
   const { doSignIn } = useAuth();
   const { showToast } = useToast();
-  const [email, setEmail] = useState('');
+  const [identifier, setIdentifier] = useState('');
   const [password, setPassword] = useState('');
   const [loading, setLoading] = useState(false);
   const [err, setErr] = useState('');
@@ -34,11 +41,38 @@ function SignInForm({ switchMode, closeAuth }) {
     setErr('');
     setLoading(true);
     try {
-      await doSignIn(email.trim(), password);
+      let email = identifier.trim();
+
+      // If it's not an email (no @), treat it as a username and look up the email
+      if (!email.includes('@')) {
+        try {
+          const r = await fetch(`/api/lookup-username?username=${encodeURIComponent(email)}`);
+          const data = await r.json();
+          if (data.email) {
+            email = data.email;
+          } else {
+            setErr('No account with that username');
+            setLoading(false);
+            return;
+          }
+        } catch {
+          setErr('Could not look up username');
+          setLoading(false);
+          return;
+        }
+      }
+
+      await doSignIn(email, password);
       showToast('Welcome back');
       closeAuth();
     } catch (ex) {
-      setErr(ex.json?.error_description || ex.message || 'Sign in failed');
+      // Pull the most useful error message available from gotrue
+      let m = '';
+      if (ex.json) {
+        m = ex.json.error_description || ex.json.msg || ex.json.error;
+      }
+      if (!m) m = ex.message || 'Sign in failed';
+      setErr(m);
     } finally {
       setLoading(false);
     }
@@ -52,15 +86,16 @@ function SignInForm({ switchMode, closeAuth }) {
       </div>
       <form className="auth-form" onSubmit={submit}>
         <div className="field">
-          <label>Email</label>
+          <label>Username or Email</label>
           <input
             className="input"
-            type="email"
-            value={email}
-            onChange={(e) => setEmail(e.target.value)}
-            placeholder="you@example.com"
+            type="text"
+            value={identifier}
+            onChange={(e) => setIdentifier(e.target.value)}
+            placeholder="aeropilot or you@example.com"
             required
             autoFocus
+            autoComplete="username"
           />
         </div>
         <div className="field">
@@ -72,6 +107,7 @@ function SignInForm({ switchMode, closeAuth }) {
             onChange={(e) => setPassword(e.target.value)}
             placeholder="••••••••"
             required
+            autoComplete="current-password"
           />
         </div>
         {err && <div className="auth-err">{err}</div>}
@@ -80,9 +116,9 @@ function SignInForm({ switchMode, closeAuth }) {
         </button>
       </form>
       <div className="auth-foot">
-        <button className="link-btn" onClick={() => switchMode('forgot')}>Forgot password?</button>
+        <button className="link-btn" onClick={() => switchMode('forgot')} type="button">Forgot password?</button>
         <span className="auth-foot-sep">·</span>
-        <button className="link-btn" onClick={() => switchMode('signup')}>Create account</button>
+        <button className="link-btn" onClick={() => switchMode('signup')} type="button">Create account</button>
       </div>
     </>
   );
@@ -297,6 +333,84 @@ function ForgotForm({ switchMode }) {
       <div className="auth-foot">
         <button className="link-btn" onClick={() => switchMode('signin')}>Back to sign in</button>
       </div>
+    </>
+  );
+}
+
+function RecoverForm({ closeAuth }) {
+  const { doRecoverPassword } = useAuth();
+  const { showToast } = useToast();
+  const [password, setPassword] = useState('');
+  const [confirmPw, setConfirmPw] = useState('');
+  const [loading, setLoading] = useState(false);
+  const [err, setErr] = useState('');
+
+  const submit = async (e) => {
+    e.preventDefault();
+    setErr('');
+    if (password.length < 8) {
+      setErr('Password must be at least 8 characters');
+      return;
+    }
+    if (password !== confirmPw) {
+      setErr('Passwords do not match');
+      return;
+    }
+    setLoading(true);
+    try {
+      await doRecoverPassword(password);
+      showToast('Password updated. You are signed in.');
+      closeAuth();
+    } catch (ex) {
+      let m = '';
+      if (ex.json) m = ex.json.error_description || ex.json.msg || ex.json.error;
+      if (!m) m = ex.message || 'Could not reset password';
+      setErr(m);
+    } finally {
+      setLoading(false);
+    }
+  };
+
+  return (
+    <>
+      <div className="auth-head">
+        <div className="kicker">Password Reset</div>
+        <h2 className="h1-display" style={{ fontSize: 36 }}>Set a new one.</h2>
+        <p className="small" style={{ marginTop: 8 }}>You will be signed in automatically.</p>
+      </div>
+      <form className="auth-form" onSubmit={submit}>
+        <div className="field">
+          <label>New Password</label>
+          <input
+            className="input"
+            type="password"
+            value={password}
+            onChange={(e) => setPassword(e.target.value)}
+            placeholder="At least 8 characters"
+            required
+            minLength={8}
+            autoFocus
+            autoComplete="new-password"
+          />
+        </div>
+        <div className="field">
+          <label>Confirm Password</label>
+          <input
+            className="input"
+            type="password"
+            value={confirmPw}
+            onChange={(e) => setConfirmPw(e.target.value)}
+            placeholder="Re-enter password"
+            required
+            minLength={8}
+            autoComplete="new-password"
+          />
+        </div>
+        {err && <div className="auth-err">{err}</div>}
+        <button className="btn btn-sky btn-lg" type="submit" disabled={loading} style={{ width: '100%', marginTop: 8 }}>
+          {loading ? 'Updating…' : 'Update Password →'}
+        </button>
+      </form>
     </>
   );
 }

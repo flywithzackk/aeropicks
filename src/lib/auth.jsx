@@ -13,9 +13,39 @@ const auth = new GoTrue({
 export function AuthProvider({ children }) {
   const [user, setUser] = useState(null);
   const [ready, setReady] = useState(false);
-  const [authModal, setAuthModal] = useState(null); // null | 'signin' | 'signup' | 'forgot'
+  const [authModal, setAuthModal] = useState(null); // null | 'signin' | 'signup' | 'forgot' | 'recover' | 'confirm'
+  const [recoveryToken, setRecoveryToken] = useState(null);
+  const [confirmToken, setConfirmToken] = useState(null);
 
   useEffect(() => {
+    // Check for tokens in the URL hash (Netlify Identity uses hash fragments)
+    // Examples: #recovery_token=xxx, #confirmation_token=xxx, #invite_token=xxx
+    if (typeof window !== 'undefined' && window.location.hash) {
+      const hash = window.location.hash.substring(1);
+      const params = new URLSearchParams(hash);
+      const recovery = params.get('recovery_token');
+      const confirmation = params.get('confirmation_token');
+      const invite = params.get('invite_token');
+
+      if (recovery) {
+        setRecoveryToken(recovery);
+        setAuthModal('recover');
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      } else if (confirmation) {
+        setConfirmToken(confirmation);
+        // auto-confirm and notify
+        auth.confirm(confirmation, true).then(u => {
+          setUser(buildUserObj(u));
+          history.replaceState(null, '', window.location.pathname + window.location.search);
+        }).catch(() => {
+          history.replaceState(null, '', window.location.pathname + window.location.search);
+        });
+      } else if (invite) {
+        // Future: invite token flow
+        history.replaceState(null, '', window.location.pathname + window.location.search);
+      }
+    }
+
     const current = auth.currentUser();
     if (current) {
       setUser(buildUserObj(current));
@@ -38,7 +68,10 @@ export function AuthProvider({ children }) {
 
   const login = () => setAuthModal('signin');
   const signup = () => setAuthModal('signup');
-  const closeAuth = () => setAuthModal(null);
+  const closeAuth = () => {
+    setAuthModal(null);
+    setRecoveryToken(null);
+  };
   const switchMode = (mode) => setAuthModal(mode);
 
   const doSignIn = async (email, password) => {
@@ -74,6 +107,16 @@ export function AuthProvider({ children }) {
 
   const doForgotPassword = async (email) => {
     await auth.requestPasswordRecovery(email);
+  };
+
+  const doRecoverPassword = async (newPassword) => {
+    if (!recoveryToken) throw new Error('no recovery token');
+    // Recover() validates the token and returns a user; then update() sets new password
+    const recoveredUser = await auth.recover(recoveryToken, true);
+    const updated = await recoveredUser.update({ password: newPassword });
+    setUser(buildUserObj(updated));
+    setRecoveryToken(null);
+    return updated;
   };
 
   const updateProfile = async (updates) => {
@@ -116,7 +159,6 @@ export function AuthProvider({ children }) {
       try {
         token = await current.jwt();
       } catch (e) {
-        // Token refresh failed - sign out
         setUser(null);
       }
     }
@@ -136,9 +178,11 @@ export function AuthProvider({ children }) {
         closeAuth,
         switchMode,
         authModal,
+        recoveryToken,
         doSignIn,
         doSignUp,
         doForgotPassword,
+        doRecoverPassword,
         updateProfile,
         logout,
         authFetch,

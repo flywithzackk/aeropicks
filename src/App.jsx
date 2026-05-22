@@ -14,12 +14,28 @@ function Layout({ children }) {
   const { user, isAdmin, login, signup, logout, authFetch } = useAuth();
   const loc = useLocation();
   const [you, setYou] = useState(null);
+  const [menuOpen, setMenuOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
       authFetch('/api/leaderboard').then(r => r.json()).then(d => setYou(d.you)).catch(() => {});
     }
   }, [user, loc.pathname]);
+
+  // Close mobile menu when route changes
+  useEffect(() => {
+    setMenuOpen(false);
+  }, [loc.pathname]);
+
+  // Lock body scroll when menu is open
+  useEffect(() => {
+    if (menuOpen) {
+      document.body.style.overflow = 'hidden';
+    } else {
+      document.body.style.overflow = '';
+    }
+    return () => { document.body.style.overflow = ''; };
+  }, [menuOpen]);
 
   if (!user && loc.pathname === '/') {
     return <>{children}</>;
@@ -32,7 +48,9 @@ function Layout({ children }) {
           <Link to="/" className="brand">
             <img src="/logos/aeropickswordwbaggie.png" alt="" className="brand-logo" />
           </Link>
-          <div className="nav-links">
+
+          {/* Desktop links */}
+          <div className="nav-links nav-links-desktop">
             {user && (
               <>
                 <NavLink to="/competitions" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>Competitions</NavLink>
@@ -62,8 +80,95 @@ function Layout({ children }) {
               </>
             )}
           </div>
+
+          {/* Mobile hamburger button */}
+          <button
+            className="hamburger-btn"
+            onClick={() => setMenuOpen(true)}
+            aria-label="Open menu"
+            type="button"
+          >
+            {user && user.photo ? (
+              <img src={user.photo} alt="" className="hamburger-avatar" />
+            ) : user ? (
+              <div className="hamburger-avatar hamburger-avatar-initial">{user.username?.[0]?.toUpperCase() || '?'}</div>
+            ) : null}
+            <span className="hamburger-lines">
+              <span></span>
+              <span></span>
+              <span></span>
+            </span>
+          </button>
         </div>
       </nav>
+
+      {/* Mobile drawer overlay */}
+      {menuOpen && (
+        <div className="drawer-overlay" onClick={() => setMenuOpen(false)}>
+          <div className="drawer" onClick={(e) => e.stopPropagation()}>
+            <button className="drawer-close" onClick={() => setMenuOpen(false)} aria-label="Close" type="button">×</button>
+            {user && (
+              <>
+                <div className="drawer-user">
+                  {user.photo ? (
+                    <img src={user.photo} alt="" className="drawer-avatar" />
+                  ) : (
+                    <div className="drawer-avatar drawer-avatar-initial">{user.username?.[0]?.toUpperCase() || '?'}</div>
+                  )}
+                  <div>
+                    <div className="drawer-username">{user.username}</div>
+                    {you && (
+                      <div className="drawer-won">
+                        <span className="drawer-won-num">{you.total.toLocaleString()}</span>
+                        <span className="drawer-won-label">PTS WON</span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+                <div className="drawer-links">
+                  <NavLink to="/competitions" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                    <span>Competitions</span>
+                    <span className="drawer-link-arrow">→</span>
+                  </NavLink>
+                  <NavLink to="/my-bets" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                    <span>My Picks</span>
+                    <span className="drawer-link-arrow">→</span>
+                  </NavLink>
+                  <NavLink to="/leaderboard" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                    <span>Leaderboard</span>
+                    <span className="drawer-link-arrow">→</span>
+                  </NavLink>
+                  <NavLink to="/profile" className={({ isActive }) => `drawer-link ${isActive ? 'active' : ''}`}>
+                    <span>Profile</span>
+                    <span className="drawer-link-arrow">→</span>
+                  </NavLink>
+                  {isAdmin && (
+                    <NavLink to="/admin" className={({ isActive }) => `drawer-link drawer-link-admin ${isActive ? 'active' : ''}`}>
+                      <span>Admin</span>
+                      <span className="drawer-link-arrow">→</span>
+                    </NavLink>
+                  )}
+                </div>
+                <div className="drawer-foot">
+                  <button className="btn btn-ghost" onClick={() => { setMenuOpen(false); logout(); }} style={{ width: '100%' }}>Sign Out</button>
+                </div>
+              </>
+            )}
+            {!user && (
+              <>
+                <div className="drawer-user" style={{ paddingTop: 30 }}>
+                  <img src="/logos/aeropickswordwbaggie.png" alt="Aeropicks" style={{ height: 36 }} />
+                </div>
+                <div className="drawer-foot" style={{ marginTop: 'auto' }}>
+                  <button className="btn btn-sky btn-lg" onClick={() => { setMenuOpen(false); signup(); }} style={{ width: '100%', marginBottom: 12 }}>Sign Up</button>
+                  <button className="btn btn-ghost btn-lg" onClick={() => { setMenuOpen(false); login(); }} style={{ width: '100%' }}>Sign In</button>
+                </div>
+              </>
+            )}
+          </div>
+        </div>
+      )}
+
       <main className="shell">{children}</main>
       <footer className="shell footer">
         <span className="footer-brand">AEROPICKS</span>
