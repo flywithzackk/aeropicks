@@ -103,15 +103,17 @@ export function AuthProvider({ children }) {
       } catch {}
       return loggedIn;
     } catch (ex) {
-      // If login fails right after signup, it usually means email confirmation
-      // is still required in Netlify settings. Surface that to the caller.
-      const m = ex.json?.error_description || ex.json?.msg || ex.message || '';
+      // Surface the actual error from gotrue - might be confirmation required,
+      // might be something else (wrong password, network issue, etc).
+      const m = ex.json?.error_description || ex.json?.msg || ex.json?.error || ex.message || 'Could not sign in after signup';
       if (/confirm/i.test(m) || /not yet confirmed/i.test(m)) {
-        const err = new Error('Account created — but email confirmation is still required in Netlify settings. Disable it under Identity → Registration.');
+        const err = new Error('Your account was created. Please check your email to confirm your account, then sign in.');
         err.confirmRequired = true;
         throw err;
       }
-      throw ex;
+      // Account created but auto-login failed for a different reason — tell them to try signing in
+      const err = new Error(`Account created. Please sign in manually: ${m}`);
+      throw err;
     }
   };
 
