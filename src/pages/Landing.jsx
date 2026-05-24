@@ -38,7 +38,7 @@ export default function Landing() {
               </h1>
               <p className="body fade-up" style={{ animationDelay: '0.16s', marginTop: 24, maxWidth: 460, fontSize: 18 }}>
                 The wagering floor for competition ballooning. Back the pilots you believe in
-                and see who becomes victorious.
+                and see who rises to the top.
               </p>
               <div className="fade-up" style={{ animationDelay: '0.24s', marginTop: 32, display: 'flex', gap: 12, flexWrap: 'wrap' }}>
                 <button className="btn btn-sky btn-lg" onClick={signup}>

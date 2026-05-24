@@ -41,7 +41,7 @@ export default function Competition() {
       setComp(compData.competition);
       const map = {};
       (betsData.bets || []).forEach(b => {
-        map[`${b.pilotId}:${b.place}`] = b.points;
+        map[`${b.pilotId}:${b.place}`] = { points: b.points, status: b.status || 'pending' };
       });
       setBets(map);
       setWildcardPick(betsData.wildcard?.value || '');
@@ -49,7 +49,12 @@ export default function Competition() {
     }).catch(() => setLoading(false));
   }, [id]);
 
-  const totalWagered = Object.values(bets).reduce((s, v) => s + (Number(v) || 0), 0);
+  // Only count non-refunded bets toward the wagered total
+  const totalWagered = Object.values(bets).reduce((s, v) => {
+    const points = typeof v === 'object' ? v.points : v;
+    const status = typeof v === 'object' ? v.status : 'pending';
+    return s + (status === 'refunded' ? 0 : (Number(points) || 0));
+  }, 0);
   const remaining = 1000 - totalWagered;
   const pct = Math.min(100, (totalWagered / 1000) * 100);
   const locked = comp?.status === 'locked' || comp?.status === 'settled';
@@ -58,13 +63,14 @@ export default function Competition() {
     if (!selectedPilot) return;
     if (pointInput <= 0) return;
     const key = `${selectedPilot.id}:${selectedPlace}`;
-    const currentForThis = Number(bets[key]) || 0;
+    const existing = bets[key];
+    const currentForThis = existing ? (typeof existing === 'object' ? existing.points : Number(existing) || 0) : 0;
     const otherTotal = totalWagered - currentForThis;
     if (otherTotal + pointInput > 1000) {
       showToast(`Only ${1000 - otherTotal} points available`, 'error');
       return;
     }
-    setBets(prev => ({ ...prev, [key]: pointInput }));
+    setBets(prev => ({ ...prev, [key]: { points: pointInput, status: 'pending' } }));
     showToast(`+${pointInput} on ${selectedPilot.name.split(',')[0]} @ ${ordinal(selectedPlace)}`);
     setSelectedPilot(null);
   };
@@ -79,10 +85,17 @@ export default function Competition() {
 
   const save = async () => {
     setSaving(true);
-    const betsList = Object.entries(bets).map(([k, points]) => {
-      const [pilotId, place] = k.split(':');
-      return { pilotId, place: Number(place), points: Number(points) };
-    });
+    // Only save pending bets (refunded ones are server-side already and shouldn't be re-submitted)
+    const betsList = Object.entries(bets)
+      .filter(([k, v]) => {
+        const status = typeof v === 'object' ? v.status : 'pending';
+        return status !== 'refunded';
+      })
+      .map(([k, v]) => {
+        const [pilotId, place] = k.split(':');
+        const points = typeof v === 'object' ? v.points : v;
+        return { pilotId, place: Number(place), points: Number(points) };
+      });
     const res = await authFetch('/api/bets', {
       method: 'POST',
       body: JSON.stringify({
@@ -161,28 +174,40 @@ export default function Competition() {
             <span className="small">{Object.keys(bets).length} picks · {totalWagered} pts</span>
           </div>
           <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(280px, 1fr))', gap: 12 }}>
-            {Object.entries(bets).map(([key, points]) => {
+            {Object.entries(bets).map(([key, val]) => {
+              const points = typeof val === 'object' ? val.points : val;
+              const status = typeof val === 'object' ? val.status : 'pending';
               const [pilotId, place] = key.split(':');
               const pilot = comp.competitors.find(c => c.id === pilotId);
               if (!pilot) return null;
               const odds = pilot.oddsByPlace?.[place] || 0;
               const potential = Math.round(points * odds);
+              const isRefunded = status === 'refunded';
               return (
-                <div key={key} className="panel" style={{ padding: 14, margin: 0, display: 'flex', gap: 12, alignItems: 'center' }}>
+                <div key={key} className="panel" style={{ padding: 14, margin: 0, display: 'flex', gap: 12, alignItems: 'center', opacity: isRefunded ? 0.65 : 1 }}>
                   {pilot.photo ? (
                     <img src={pilot.photo} alt="" style={{ width: 48, height: 48, borderRadius: 'var(--r-md)', objectFit: 'cover' }} />
                   ) : (
                     <div style={{ width: 48, height: 48, borderRadius: 'var(--r-md)', background: 'var(--bg-tint)', display: 'flex', alignItems: 'center', justifyContent: 'center', fontFamily: 'var(--display)', fontSize: 20 }}>?</div>
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
-                    <div className="cell-name" style={{ fontSize: 14 }}>{pilot.name}</div>
-                    <div className="small" style={{ fontSize: 12 }}>
-                      <span style={{ color: 'var(--coral)' }}>{ordinal(place)}</span> · {points} pts → <strong style={{ color: 'var(--electric)' }}>{potential}</strong>
+                    <div className="cell-name" style={{ fontSize: 14 }}>
+                      {pilot.name}
+                      {isRefunded && <span className="tag" style={{ background: 'var(--coral-wash)', color: 'var(--coral)', marginLeft: 6, fontSize: 9 }}>REFUNDED</span>}
                     </div>
+                    {isRefunded ? (
+                      <div className="small" style={{ fontSize: 12 }}>
+                        Pilot withdrew · <strong style={{ color: 'var(--coral)' }}>{points}</strong> pts returned to your balance
+                      </div>
+                    ) : (
+                      <div className="small" style={{ fontSize: 12 }}>
+                        <span style={{ color: 'var(--coral)' }}>{ordinal(place)}</span> · {points} pts → <strong style={{ color: 'var(--electric)' }}>{potential}</strong>
+                      </div>
+                    )}
                   </div>
-                  {!locked && (
+                  {!locked && !isRefunded && (
                     <button onClick={() => removeBet(pilotId, Number(place))}
-                      style={{ width: 28, height: 28, borderRadius: 'var(--r-pill)', background: 'var(--bg-tint)', color: 'var(--ink-mute)', fontSize: 16, fontWeight: 700 }}>×</button>
+                      style={{ width: 28, height: 28, borderRadius: 'var(--r-pill)', background: 'var(--bg-tint)', color: 'var(--ink-mute)', fontSize: 16, fontWeight: 700 }} type="button">×</button>
                   )}
                 </div>
               );
@@ -304,19 +329,24 @@ export default function Competition() {
         <div className="pilot-grid">
           {sortedCompetitors.map((p, i) => {
             const winOdds = p.oddsByPlace?.[1] || 0;
-            const picksOnThisPilot = Object.entries(bets).filter(([k]) => k.startsWith(p.id + ':')).length;
+            const picksOnThisPilot = Object.entries(bets).filter(([k, v]) => {
+              if (!k.startsWith(p.id + ':')) return false;
+              const status = typeof v === 'object' ? v.status : 'pending';
+              return status !== 'refunded';
+            }).length;
+            const isWithdrawn = !!p.withdrawn;
             return (
               <button
                 key={p.id}
-                onClick={() => !locked && setSelectedPilot(p)}
-                className="pilot-card fade-up"
+                onClick={() => !locked && !isWithdrawn && setSelectedPilot(p)}
+                className={`pilot-card fade-up ${isWithdrawn ? 'pilot-card-withdrawn' : ''}`}
                 style={{
                   animationDelay: `${i * 0.02}s`,
                   textAlign: 'left',
-                  cursor: locked ? 'default' : 'pointer',
-                  ...(picksOnThisPilot > 0 ? { borderColor: 'var(--electric)', boxShadow: '0 0 0 1.5px var(--electric), var(--shadow-md)' } : {}),
+                  cursor: (locked || isWithdrawn) ? 'default' : 'pointer',
+                  ...(picksOnThisPilot > 0 && !isWithdrawn ? { borderColor: 'var(--electric)', boxShadow: '0 0 0 1.5px var(--electric), var(--shadow-md)' } : {}),
                 }}
-                disabled={locked}
+                disabled={locked || isWithdrawn}
               >
                 <div style={{ display: 'flex', gap: 12 }}>
                   {p.photo ? (
@@ -327,7 +357,9 @@ export default function Competition() {
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
                       <span className="pilot-rank">Banner #{p.number || (i + 1)}</span>
-                      {picksOnThisPilot > 0 && (
+                      {isWithdrawn ? (
+                        <span className="tag" style={{ background: 'var(--red-wash)', color: 'var(--red)' }}>WITHDRAWN</span>
+                      ) : picksOnThisPilot > 0 && (
                         <span className="tag" style={{ background: 'var(--electric-wash)', color: 'var(--electric)' }}>
                           {picksOnThisPilot} pick{picksOnThisPilot > 1 ? 's' : ''}
                         </span>
@@ -388,7 +420,11 @@ export default function Competition() {
           pointInput={pointInput}
           setPointInput={setPointInput}
           existingBet={bets[`${selectedPilot.id}:${selectedPlace}`] || 0}
-          remaining={remaining + (Number(bets[`${selectedPilot.id}:${selectedPlace}`]) || 0)}
+          remaining={remaining + (() => {
+            const existing = bets[`${selectedPilot.id}:${selectedPlace}`];
+            if (!existing) return 0;
+            return typeof existing === 'object' ? (existing.points || 0) : (Number(existing) || 0);
+          })()}
           onConfirm={addBet}
           onCancel={() => setSelectedPilot(null)}
         />

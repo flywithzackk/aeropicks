@@ -80,6 +80,8 @@ export default async (req, context) => {
 
     // Placement bets
     compBets.bets = (compBets.bets || []).map(b => {
+      // Refunded bets stay refunded - no payout, no loss
+      if (b.status === 'refunded') return b;
       const actualPlace = Number(results[b.pilotId]);
       if (actualPlace && actualPlace === b.place) {
         const payout = Math.round(b.points * b.odds);

@@ -131,22 +131,31 @@ function CompetitionsTab() {
 
   return (
     <div>
-      <div className="panel fade-up" style={{ background: 'var(--violet)', borderColor: 'var(--violet)', display: 'flex', justifyContent: 'space-between', alignItems: 'center', gap: 20, flexWrap: 'wrap' }}>
-        <div>
-          <div className="kicker" style={{ color: 'rgba(255,255,255,0.7)', marginBottom: 6 }}>Quick Start</div>
-          <h2 className="h2" style={{ color: '#fff' }}>Seed Rio Grande Classic 2026</h2>
-          <p className="small" style={{ color: 'rgba(255,255,255,0.8)', marginTop: 4 }}>
-            31 pilots with photos, balloon photos, rankings, history, and calculated odds.
-          </p>
-        </div>
-        <button className="btn" style={{ background: '#fff', color: 'var(--violet)' }} onClick={seed}>Seed Now</button>
+      {/* Top action bar */}
+      <div className="comp-action-bar fade-up">
+        <button
+          className="btn btn-violet btn-lg"
+          type="button"
+          onClick={() => {
+            setEditingId(null);
+            setEditingWildcard(false);
+            setForm({ name: '', location: '', dates: '', eventLevel: 'state', description: '', status: 'draft', wildcard: null, logoImage: null, bannerImage: null });
+            setTimeout(() => {
+              const form = document.getElementById('comp-form-panel');
+              if (form) form.scrollIntoView({ behavior: 'smooth', block: 'start' });
+            }, 50);
+          }}
+        >
+          + New Competition
+        </button>
+        <button className="btn btn-ghost" type="button" onClick={seed}>Quick Seed: RGC 2026</button>
       </div>
 
-      <div className="panel fade-up" style={{ animationDelay: '0.05s' }}>
+      <div id="comp-form-panel" className="panel fade-up" style={{ animationDelay: '0.05s' }}>
         <div className="panel-head">
           <h2 className="h2">{editingId ? 'Edit Competition' : 'New Competition'}</h2>
           {editingId && (
-            <button className="btn btn-ghost btn-sm" onClick={() => { setEditingId(null); setEditingWildcard(false); setForm({ name: '', location: '', dates: '', eventLevel: 'state', description: '', status: 'draft', wildcard: null }); }}>
+            <button className="btn btn-ghost btn-sm" onClick={() => { setEditingId(null); setEditingWildcard(false); setForm({ name: '', location: '', dates: '', eventLevel: 'state', description: '', status: 'draft', wildcard: null, logoImage: null, bannerImage: null }); }}>
               Cancel
             </button>
           )}
@@ -181,6 +190,7 @@ function CompetitionsTab() {
               <label>Status</label>
               <select className="select" value={form.status} onChange={e => setForm({ ...form, status: e.target.value })}>
                 <option value="draft">Draft — hidden</option>
+                <option value="upcoming">Upcoming — visible, picks closed</option>
                 <option value="live">Live — picks open</option>
                 <option value="locked">Locked — no new picks</option>
                 <option value="settled">Settled — results in</option>
@@ -290,6 +300,40 @@ function CompetitionsTab() {
                     <td><span className={`tag tag-${c.status === 'settled' ? 'locked' : c.status}`}>{c.status}</span></td>
                     <td style={{ textAlign: 'right', paddingRight: 24, whiteSpace: 'nowrap' }}>
                       <button className="btn btn-ghost btn-sm" onClick={() => edit(c)} style={{ marginRight: 6 }}>Edit</button>
+                      {(c.competitorCount ?? 0) === 0 && (
+                        <>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={async () => {
+                              if (!confirm(`Seed "${c.name}" with the 31 RGC pilots + photos + calculated odds?`)) return;
+                              const res = await authFetch('/api/seed-rgc', {
+                                method: 'POST',
+                                body: JSON.stringify({ competitionId: c.id }),
+                              });
+                              const data = await res.json();
+                              if (res.ok) { showToast(`Seeded ${data.pilotCount} pilots`); load(); }
+                              else showToast(data.error || 'Seed failed', 'error');
+                            }}
+                            style={{ marginRight: 6, color: 'var(--violet)', borderColor: 'var(--violet)' }}
+                          >Seed RGC</button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={async () => {
+                              const url = prompt(`Paste the WatchMeFly event URL for "${c.name}"\n\nExample: https://watchmefly.net/events/event.php?e=rgc2026`);
+                              if (!url) return;
+                              showToast('Importing pilots (this may take 30s)…');
+                              const res = await authFetch('/api/scrape-watchmefly', {
+                                method: 'POST',
+                                body: JSON.stringify({ competitionId: c.id, url, fetchPhotos: true }),
+                              });
+                              const data = await res.json();
+                              if (res.ok) { showToast(`Imported ${data.pilotCount} pilots`); load(); }
+                              else showToast(data.error || 'Import failed', 'error');
+                            }}
+                            style={{ marginRight: 6, color: 'var(--sky)', borderColor: 'var(--sky)' }}
+                          >Import from WatchMeFly</button>
+                        </>
+                      )}
                       {c.status === 'draft' && <button className="btn btn-ghost btn-sm" onClick={() => setStatus(c, 'live')} style={{ marginRight: 6 }}>Open</button>}
                       {c.status === 'live' && <button className="btn btn-ghost btn-sm" onClick={() => setStatus(c, 'locked')} style={{ marginRight: 6 }}>Lock</button>}
                       {c.status === 'locked' && <button className="btn btn-ghost btn-sm" onClick={() => setStatus(c, 'live')} style={{ marginRight: 6 }}>Reopen</button>}
@@ -393,14 +437,18 @@ function RosterTab() {
                     const override = p.overrideOdds?.[1];
                     const algoOdds = p.oddsByPlace?.[1];
                     const isExpanded = expandedPilot === p.id;
+                    const isWithdrawn = !!p.withdrawn;
                     const rows = [
-                      <tr key={p.id}>
+                      <tr key={p.id} style={isWithdrawn ? { opacity: 0.55 } : {}}>
                           <td style={{ paddingLeft: 24, fontFamily: 'var(--mono)', color: 'var(--ink-mute)' }}>{p.number}</td>
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                               {p.photo ? <img src={p.photo} style={{ width: 36, height: 36, borderRadius: 'var(--r-sm)', objectFit: 'cover' }} /> : <div style={{ width: 36, height: 36, borderRadius: 'var(--r-sm)', background: 'var(--bg-tint)' }} />}
                               <div>
-                                <div className="cell-name">{p.name}</div>
+                                <div className="cell-name">
+                                  {p.name}
+                                  {isWithdrawn && <span className="tag" style={{ background: 'var(--red-wash)', color: 'var(--red)', marginLeft: 8, fontSize: 9 }}>WITHDRAWN</span>}
+                                </div>
                                 {p.balloon && <div style={{ fontSize: 11, color: 'var(--ink-mute)', fontStyle: 'italic' }}>"{p.balloon}"</div>}
                               </div>
                             </div>
@@ -416,9 +464,31 @@ function RosterTab() {
                             </span>
                             {override !== undefined && override !== null && <span className="small" style={{ marginLeft: 6 }}>(override)</span>}
                           </td>
-                          <td style={{ textAlign: 'right', paddingRight: 24 }}>
-                            <button className="btn btn-ghost btn-sm" onClick={() => setExpandedPilot(isExpanded ? null : p.id)}>
+                          <td style={{ textAlign: 'right', paddingRight: 24, whiteSpace: 'nowrap' }}>
+                            <button className="btn btn-ghost btn-sm" onClick={() => setExpandedPilot(isExpanded ? null : p.id)} style={{ marginRight: 6 }}>
                               {isExpanded ? 'Close' : 'Override Odds'}
+                            </button>
+                            <button
+                              className="btn btn-ghost btn-sm"
+                              style={{ color: isWithdrawn ? 'var(--ink-soft)' : 'var(--red)', borderColor: isWithdrawn ? 'var(--line)' : 'var(--red-wash)' }}
+                              onClick={async () => {
+                                const next = !isWithdrawn;
+                                if (next && !confirm(`Mark ${p.name} as withdrawn? All bets on this pilot will be refunded to members' per-competition balance.`)) return;
+                                if (!next && !confirm(`Un-mark ${p.name} as withdrawn? (This does NOT re-apply the previously refunded bets.)`)) return;
+                                const res = await authFetch('/api/withdraw-pilot', {
+                                  method: 'POST',
+                                  body: JSON.stringify({ competitionId: competition.id, pilotId: p.id, withdrawn: next }),
+                                });
+                                const data = await res.json();
+                                if (res.ok) {
+                                  showToast(next ? `${p.name} withdrawn · ${data.refundsIssued} bets refunded` : `${p.name} re-instated`);
+                                  loadRoster(competition.id);
+                                } else {
+                                  showToast(data.error || 'Failed', 'error');
+                                }
+                              }}
+                            >
+                              {isWithdrawn ? 'Un-withdraw' : 'Withdraw'}
                             </button>
                           </td>
                         </tr>
@@ -630,74 +700,106 @@ function ResultsTab() {
 function UsersTab() {
   const { authFetch } = useAuth();
   const { showToast } = useToast();
-  const [users, setUsers] = useState([]);
+  const [members, setMembers] = useState([]);
   const [loading, setLoading] = useState(true);
-  const [note, setNote] = useState('');
+  const [expanded, setExpanded] = useState(null); // userId of expanded row
+  const [memberDetail, setMemberDetail] = useState({}); // { userId: { member, bets } }
 
   const load = () => {
-    authFetch('/api/users').then(r => r.json()).then(d => {
-      setUsers(d.users || []); setNote(d.error || ''); setLoading(false);
+    authFetch('/api/admin-members').then(r => r.json()).then(d => {
+      setMembers(d.members || []);
+      setLoading(false);
     }).catch(() => setLoading(false));
   };
   useEffect(() => { load(); }, []);
 
-  const resetPassword = async (email) => {
-    const res = await authFetch('/api/users', { method: 'POST', body: JSON.stringify({ action: 'recover', email }) });
-    if (res.ok) showToast(`Reset sent to ${email}`);
-    else showToast('Reset failed', 'error');
+  const toggleExpand = async (userId) => {
+    if (expanded === userId) {
+      setExpanded(null);
+      return;
+    }
+    setExpanded(userId);
+    if (!memberDetail[userId]) {
+      const r = await authFetch(`/api/admin-members?userId=${userId}`);
+      const d = await r.json();
+      if (r.ok) setMemberDetail(prev => ({ ...prev, [userId]: d }));
+    }
   };
 
-  const toggleAdmin = async (u) => {
-    const isAdmin = u.app_metadata?.roles?.includes('admin');
-    const res = await authFetch('/api/users', { method: 'POST', body: JSON.stringify({ action: 'setRole', userId: u.id, admin: !isAdmin }) });
-    if (res.ok) { showToast(isAdmin ? 'Admin revoked' : 'Admin granted'); load(); }
-  };
+  if (loading) return <div className="panel"><div className="spinner" /></div>;
+
+  const realMembers = members.filter(m => !m.simulated);
+  const simMembers = members.filter(m => m.simulated);
 
   return (
     <div className="panel fade-up" style={{ padding: 0, overflow: 'hidden' }}>
       <div className="panel-head" style={{ padding: '22px 24px', marginBottom: 0 }}>
         <h2 className="h2">Members</h2>
-        <span className="small">{users.length} total</span>
+        <span className="small">{realMembers.length} real · {simMembers.length} simulated</span>
       </div>
-      {loading && <div style={{ padding: 50 }}><div className="spinner" /></div>}
-      {!loading && users.length === 0 && (
+      {members.length === 0 ? (
         <div className="empty">
           <div className="empty-icon">👥</div>
-          <div className="empty-title">No members to show</div>
-          <p className="small">{note || 'User listing requires NETLIFY_IDENTITY_TOKEN env var.'}</p>
+          <div className="empty-title">No members yet</div>
+          <p className="small">Members will appear here after they sign up.</p>
         </div>
-      )}
-      {users.length > 0 && (
-        <div className="table-wrap">
-          <table className="table">
-            <thead>
-              <tr>
-                <th style={{ paddingLeft: 24 }}>Email</th>
-                <th>Joined</th>
-                <th>Role</th>
-                <th style={{ textAlign: 'right', paddingRight: 24 }}>Actions</th>
-              </tr>
-            </thead>
-            <tbody>
-              {users.map(u => {
-                const isAdmin = u.app_metadata?.roles?.includes('admin');
-                return (
-                  <tr key={u.id}>
-                    <td className="cell-name" style={{ paddingLeft: 24 }}>{u.email}</td>
-                    <td className="small">{u.created_at ? new Date(u.created_at).toLocaleDateString() : '—'}</td>
-                    <td>{isAdmin
-                      ? <span className="tag" style={{ background: 'var(--violet-wash)', color: 'var(--violet)' }}>Admin</span>
-                      : <span className="small">Member</span>}
-                    </td>
-                    <td style={{ textAlign: 'right', paddingRight: 24, whiteSpace: 'nowrap' }}>
-                      <button className="btn btn-ghost btn-sm" onClick={() => resetPassword(u.email)} style={{ marginRight: 6 }}>Reset PW</button>
-                      <button className="btn btn-ghost btn-sm" onClick={() => toggleAdmin(u)}>{isAdmin ? 'Revoke' : 'Make Admin'}</button>
-                    </td>
-                  </tr>
-                );
-              })}
-            </tbody>
-          </table>
+      ) : (
+        <div className="members-list">
+          {members.map(m => (
+            <div key={m.userId} className={`member-row ${m.simulated ? 'member-sim' : ''}`}>
+              <button className="member-summary" onClick={() => toggleExpand(m.userId)} type="button">
+                {m.photo ? (
+                  <img src={m.photo} alt="" className="member-photo" />
+                ) : (
+                  <div className="member-photo member-photo-initial">{m.username?.[0]?.toUpperCase() || '?'}</div>
+                )}
+                <div className="member-info">
+                  <div className="member-name">
+                    {m.username}
+                    {m.simulated && <span className="tag" style={{ background: 'var(--bg-tint)', color: 'var(--ink-mute)', marginLeft: 8, fontSize: 10 }}>SIM</span>}
+                  </div>
+                  <div className="small" style={{ color: 'var(--ink-mute)' }}>{m.email}</div>
+                </div>
+                <div className="member-stats">
+                  <div>
+                    <span className="member-stat-num" style={{ color: 'var(--lime)' }}>{m.totalWon.toLocaleString()}</span>
+                    <span className="member-stat-label">won</span>
+                  </div>
+                  <div>
+                    <span className="member-stat-num">{m.betCount}</span>
+                    <span className="member-stat-label">picks</span>
+                  </div>
+                </div>
+                <span className="member-expand-icon">{expanded === m.userId ? '▾' : '▸'}</span>
+              </button>
+              {expanded === m.userId && memberDetail[m.userId] && (
+                <div className="member-detail">
+                  <h4 className="kicker" style={{ marginBottom: 12, color: 'var(--sky)' }}>Picks ({memberDetail[m.userId].bets.length})</h4>
+                  {memberDetail[m.userId].bets.length === 0 ? (
+                    <p className="small">No picks placed yet.</p>
+                  ) : (
+                    <div className="member-bets-table">
+                      {memberDetail[m.userId].bets.map((b, i) => (
+                        <div key={i} className={`member-bet member-bet-${b.status}`}>
+                          {b.pilotPhoto ? <img src={b.pilotPhoto} alt="" className="member-bet-photo" /> : <div className="member-bet-photo member-bet-photo-placeholder">?</div>}
+                          <div style={{ flex: 1, minWidth: 0 }}>
+                            <div style={{ fontWeight: 700, fontSize: 13 }}>{b.pilotName}</div>
+                            <div className="small">{b.competitionName} · {ordinal(b.place)}</div>
+                          </div>
+                          <div style={{ textAlign: 'right' }}>
+                            <div style={{ fontFamily: 'var(--display)', fontSize: 18, color: b.status === 'won' ? 'var(--lime)' : b.status === 'lost' ? 'var(--ink-mute)' : 'var(--electric)' }}>
+                              {b.status === 'won' ? `+${b.payout}` : b.points}
+                            </div>
+                            <div className="small" style={{ fontSize: 10 }}>@ {b.odds}× · {b.status}</div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
         </div>
       )}
     </div>
@@ -738,17 +840,25 @@ function TrackerTab() {
     });
   }, [selectedId]);
 
+  const [sendEmail, setSendEmail] = useState(true);
+
   const postUpdate = async () => {
     if (!newUpdate.title && !newUpdate.body) { showToast('Need a title or body', 'error'); return; }
     const res = await authFetch('/api/live-updates', {
       method: 'POST',
-      body: JSON.stringify({ competitionId: selectedId, ...newUpdate, provisionalResults: provisional }),
+      body: JSON.stringify({ competitionId: selectedId, ...newUpdate, provisionalResults: provisional, sendEmail }),
     });
     if (res.ok) {
       const data = await res.json();
       setUpdates(data.dailyUpdates || []);
       setNewUpdate({ day: '', title: '', body: '' });
-      showToast('Update posted');
+      if (data.emailResult?.sent) {
+        showToast(`Update posted · email sent to ${data.emailResult.sent} members`);
+      } else if (data.emailResult?.skipped) {
+        showToast('Update posted · email API key not configured');
+      } else {
+        showToast('Update posted');
+      }
     }
   };
 
@@ -817,17 +927,45 @@ function TrackerTab() {
             value={newUpdate.body} onChange={e => setNewUpdate({ ...newUpdate, body: e.target.value })}
             style={{ resize: 'vertical', minHeight: 60 }} />
         </div>
+        <label style={{ display: 'flex', alignItems: 'center', gap: 8, marginBottom: 12, cursor: 'pointer', fontSize: 13 }}>
+          <input type="checkbox" checked={sendEmail} onChange={e => setSendEmail(e.target.checked)} style={{ transform: 'scale(1.2)' }} />
+          Email blast to all members with picks (and notification subscribers)
+        </label>
         <button className="btn btn-sky" onClick={postUpdate}>Post Update</button>
       </div>
 
       {/* Provisional Standings */}
       {comp && comp.competitors && comp.competitors.length > 0 && (
         <div className="panel" style={{ marginBottom: 18 }}>
-          <div className="panel-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center' }}>
+          <div className="panel-head" style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
             <h2 className="h2">Provisional Standings</h2>
-            <button className="btn btn-sky btn-sm" onClick={saveProvisional}>Save Standings</button>
+            <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ color: 'var(--sky)', borderColor: 'var(--sky)' }}
+                onClick={async () => {
+                  const url = prompt(`Paste the WatchMeFly URL for current standings.\n\nExample: https://watchmefly.net/events/event.php?e=rgc2026&v=tta`);
+                  if (!url) return;
+                  showToast('Pulling standings from WatchMeFly…');
+                  const res = await authFetch('/api/scrape-standings', {
+                    method: 'POST',
+                    body: JSON.stringify({ competitionId: selectedId, url }),
+                  });
+                  const data = await res.json();
+                  if (res.ok) {
+                    setProvisional(data.provisionalResults || {});
+                    let msg = `Matched ${data.matched.length} of ${data.standingsCount}`;
+                    if (data.unmatched.length > 0) msg += ` (${data.unmatched.length} unmatched)`;
+                    showToast(msg);
+                  } else {
+                    showToast(data.error || 'Scrape failed', 'error');
+                  }
+                }}
+              >Import from WatchMeFly</button>
+              <button className="btn btn-sky btn-sm" onClick={saveProvisional}>Save Standings</button>
+            </div>
           </div>
-          <p className="small" style={{ marginBottom: 12 }}>Enter the current place for any pilot. These show to members as live standings. Leave blank for pilots not yet placed.</p>
+          <p className="small" style={{ marginBottom: 12 }}>Enter the current place for any pilot, or paste a WatchMeFly URL to auto-import.</p>
           <div className="prov-grid">
             {comp.competitors.map(p => (
               <div key={p.id} className="prov-row">

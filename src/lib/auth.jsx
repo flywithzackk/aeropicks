@@ -111,33 +111,38 @@ export function AuthProvider({ children }) {
     });
 
     // Step 2: immediately sign in. With confirmation disabled in Netlify settings,
-    // this should succeed and they're in.
+    // this should succeed and they're in. If it fails momentarily, retry once.
+    let loggedIn;
     try {
-      const loggedIn = await auth.login(email, password, true);
-      setUser(buildUserObj(loggedIn));
-      // Sync to profiles store so leaderboard can show username/photo
+      loggedIn = await auth.login(email, password, true);
+    } catch (firstErr) {
+      // Wait briefly and try again — Identity sometimes needs a tick to propagate
+      await new Promise(r => setTimeout(r, 800));
       try {
-        const token = await loggedIn.jwt();
-        await fetch('/api/profile', {
-          method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ username, photo: photoUrl }),
-        });
-      } catch {}
-      return loggedIn;
-    } catch (ex) {
-      // Surface the actual error from gotrue - might be confirmation required,
-      // might be something else (wrong password, network issue, etc).
-      const m = ex.json?.error_description || ex.json?.msg || ex.json?.error || ex.message || 'Could not sign in after signup';
-      if (/confirm/i.test(m) || /not yet confirmed/i.test(m)) {
-        const err = new Error('Your account was created. Please check your email to confirm your account, then sign in.');
-        err.confirmRequired = true;
+        loggedIn = await auth.login(email, password, true);
+      } catch (ex) {
+        const m = ex.json?.error_description || ex.json?.msg || ex.json?.error || ex.message || '';
+        if (/confirm/i.test(m) || /not yet confirmed/i.test(m)) {
+          const err = new Error('Your account was created. Please check your email to confirm your account, then sign in.');
+          err.confirmRequired = true;
+          throw err;
+        }
+        const err = new Error(`Account created. Please sign in: ${m}`);
         throw err;
       }
-      // Account created but auto-login failed for a different reason — tell them to try signing in
-      const err = new Error(`Account created. Please sign in manually: ${m}`);
-      throw err;
     }
+
+    setUser(buildUserObj(loggedIn));
+    // Sync to profiles store so leaderboard can show username/photo
+    try {
+      const token = await loggedIn.jwt();
+      await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({ username, photo: photoUrl }),
+      });
+    } catch {}
+    return loggedIn;
   };
 
   const doForgotPassword = async (email) => {

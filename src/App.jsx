@@ -9,18 +9,33 @@ import MyBets from './pages/MyBets.jsx';
 import Admin from './pages/Admin.jsx';
 import Landing from './pages/Landing.jsx';
 import Leaderboard from './pages/Leaderboard.jsx';
+import HowToPlay from './pages/HowToPlay.jsx';
 
-function Layout({ children }) {
+function Layout({ children, onShowHowToPlay }) {
   const { user, isAdmin, login, signup, logout, authFetch } = useAuth();
   const loc = useLocation();
   const [you, setYou] = useState(null);
   const [menuOpen, setMenuOpen] = useState(false);
+  const [notifs, setNotifs] = useState({ unread: 0, latestUpdates: [] });
+  const [notifsOpen, setNotifsOpen] = useState(false);
 
   useEffect(() => {
     if (user) {
       authFetch('/api/leaderboard').then(r => r.json()).then(d => setYou(d.you)).catch(() => {});
+      authFetch('/api/notifications').then(r => r.json()).then(d => setNotifs(d || { unread: 0, latestUpdates: [] })).catch(() => {});
     }
   }, [user, loc.pathname]);
+
+  const markCompSeen = async (compId) => {
+    await authFetch('/api/notifications', {
+      method: 'POST',
+      body: JSON.stringify({ competitionId: compId }),
+    });
+    setNotifs(prev => {
+      const remaining = prev.latestUpdates.filter(u => u.competitionId !== compId);
+      return { unread: remaining.length, latestUpdates: remaining };
+    });
+  };
 
   // Close mobile menu when route changes
   useEffect(() => {
@@ -57,6 +72,58 @@ function Layout({ children }) {
                 <NavLink to="/my-bets" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>My Picks</NavLink>
                 <NavLink to="/leaderboard" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>Leaderboard</NavLink>
                 {isAdmin && <NavLink to="/admin" className={({ isActive }) => `nav-link ${isActive ? 'active' : ''}`}>Admin</NavLink>}
+                <button
+                  type="button"
+                  className="help-btn"
+                  onClick={() => onShowHowToPlay && onShowHowToPlay()}
+                  aria-label="How to play"
+                  title="How to play"
+                >?</button>
+                <div className="bell-wrap">
+                  <button
+                    type="button"
+                    className="bell-btn"
+                    onClick={() => setNotifsOpen(!notifsOpen)}
+                    aria-label={`Notifications (${notifs.unread} unread)`}
+                  >
+                    <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                      <path d="M18 8A6 6 0 0 0 6 8c0 7-3 9-3 9h18s-3-2-3-9"></path>
+                      <path d="M13.73 21a2 2 0 0 1-3.46 0"></path>
+                    </svg>
+                    {notifs.unread > 0 && <span className="bell-dot">{notifs.unread > 9 ? '9+' : notifs.unread}</span>}
+                  </button>
+                  {notifsOpen && (
+                    <div className="bell-dropdown" onMouseLeave={() => setNotifsOpen(false)}>
+                      <div className="bell-dropdown-head">
+                        <strong>Notifications</strong>
+                        {notifs.unread === 0 && <span className="small">All caught up</span>}
+                      </div>
+                      {notifs.latestUpdates.length === 0 ? (
+                        <div className="bell-empty">
+                          <p className="small">No new updates.</p>
+                        </div>
+                      ) : (
+                        <div className="bell-list">
+                          {notifs.latestUpdates.map(u => (
+                            <Link
+                              to={`/competition/${u.competitionId}`}
+                              key={u.id}
+                              className="bell-item"
+                              onClick={() => { setNotifsOpen(false); markCompSeen(u.competitionId); }}
+                            >
+                              <div className="bell-item-kicker">
+                                {u.day && <span style={{ color: 'var(--lime)' }}>{u.day} · </span>}
+                                {u.competitionName}
+                              </div>
+                              <div className="bell-item-title">{u.title || 'New update'}</div>
+                              {u.body && <div className="bell-item-body">{u.body.slice(0, 80)}{u.body.length > 80 ? '…' : ''}</div>}
+                            </Link>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+                </div>
                 {you && (
                   <div className="points-chip">
                     <span className="pts-num">{you.total.toLocaleString()}</span>
@@ -98,6 +165,7 @@ function Layout({ children }) {
               <span></span>
               <span></span>
             </span>
+            {notifs.unread > 0 && <span className="hamburger-dot" />}
           </button>
         </div>
       </nav>
@@ -142,6 +210,24 @@ function Layout({ children }) {
                     <span>Profile</span>
                     <span className="drawer-link-arrow">→</span>
                   </NavLink>
+                  <button
+                    type="button"
+                    className="drawer-link"
+                    onClick={() => { setMenuOpen(false); onShowHowToPlay && onShowHowToPlay(); }}
+                  >
+                    <span>How to Play</span>
+                    <span className="drawer-link-arrow">?</span>
+                  </button>
+                  {notifs.unread > 0 && (
+                    <div className="drawer-notif-banner">
+                      <strong>{notifs.unread} new update{notifs.unread > 1 ? 's' : ''}</strong>
+                      {notifs.latestUpdates[0] && (
+                        <div className="small" style={{ marginTop: 4 }}>
+                          Latest: {notifs.latestUpdates[0].title}
+                        </div>
+                      )}
+                    </div>
+                  )}
                   {isAdmin && (
                     <NavLink to="/admin" className={({ isActive }) => `drawer-link drawer-link-admin ${isActive ? 'active' : ''}`}>
                       <span>Admin</span>
@@ -198,10 +284,31 @@ function LoadingScreen() {
 
 function AppRoutes() {
   const { user, ready } = useAuth();
+  const [showHtp, setShowHtp] = useState(false);
+
+  // Show How To Play modal on first visit (any user, logged in or not)
+  useEffect(() => {
+    if (!ready) return;
+    try {
+      const seen = localStorage.getItem('aeropicks_htp_seen');
+      if (!seen) {
+        // Only auto-show on the home / landing route, not on direct deep links
+        if (window.location.pathname === '/' || window.location.pathname === '') {
+          setTimeout(() => setShowHtp(true), 1200);
+        }
+      }
+    } catch {}
+  }, [ready]);
+
+  const closeHtp = () => {
+    setShowHtp(false);
+    try { localStorage.setItem('aeropicks_htp_seen', '1'); } catch {}
+  };
+
   if (!ready) return <LoadingScreen />;
   return (
     <>
-      <Layout>
+      <Layout onShowHowToPlay={() => setShowHtp(true)}>
         <Routes>
           <Route path="/" element={user ? <Home /> : <Landing />} />
           <Route path="/competitions" element={<RequireAuth><Home /></RequireAuth>} />
@@ -209,10 +316,12 @@ function AppRoutes() {
           <Route path="/my-bets" element={<RequireAuth><MyBets /></RequireAuth>} />
           <Route path="/leaderboard" element={<RequireAuth><Leaderboard /></RequireAuth>} />
           <Route path="/profile" element={<RequireAuth><Profile /></RequireAuth>} />
+          <Route path="/how-to-play" element={<HowToPlay />} />
           <Route path="/admin/*" element={<RequireAdmin><Admin /></RequireAdmin>} />
         </Routes>
       </Layout>
       <AuthModal />
+      {showHtp && <HowToPlay asModal onClose={closeHtp} />}
     </>
   );
 }

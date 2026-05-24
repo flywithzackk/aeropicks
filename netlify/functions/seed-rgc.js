@@ -46,27 +46,41 @@ export default async (req, context) => {
   if (!user.isAdmin) return forbidden();
 
   const store = stores.competitions();
-  const { blobs } = await store.list();
-  const all = await Promise.all(blobs.map(b => store.get(b.key, { type: 'json' })));
 
-  let comp = all.find(c => c && c.name === 'Rio Grande Classic 2026');
-  if (!comp) {
-    comp = {
-      id: uid(),
-      name: 'Rio Grande Classic 2026',
-      location: 'Rio Rancho, NM',
-      dates: 'TBD',
-      eventLevel: 'state', // state | national | world
-      description: 'New Mexico State Championship featuring 31 pilots.',
-      status: 'live',
-      wildcard: null, // admin will configure
-      competitors: [],
-      createdAt: Date.now(),
-    };
+  // If a target competitionId is passed, seed THAT competition with the RGC pilot dataset.
+  // Otherwise, find-or-create the Rio Grande Classic 2026 record by name (original behavior).
+  let body = {};
+  try { body = await req.json(); } catch {}
+  const targetId = body.competitionId || null;
+
+  let comp;
+
+  if (targetId) {
+    comp = await store.get(targetId, { type: 'json' });
+    if (!comp) return json({ error: 'Target competition not found' }, 404);
+  } else {
+    const { blobs } = await store.list();
+    const all = await Promise.all(blobs.map(b => store.get(b.key, { type: 'json' })));
+    comp = all.find(c => c && c.name === 'Rio Grande Classic 2026');
+    if (!comp) {
+      comp = {
+        id: uid(),
+        name: 'Rio Grande Classic 2026',
+        location: 'Rio Rancho, NM',
+        dates: 'TBD',
+        eventLevel: 'state',
+        description: 'New Mexico State Championship featuring 31 pilots.',
+        status: 'live',
+        wildcard: null,
+        competitors: [],
+        createdAt: Date.now(),
+      };
+    }
   }
 
-  // Run the odds algorithm using the State event weighting
-  const withOdds = calculateOdds(RGC_PILOTS, 'state');
+  // Use the event's own level for odds calculation, defaulting to 'state'
+  const eventLevel = comp.eventLevel || 'state';
+  const withOdds = calculateOdds(RGC_PILOTS, eventLevel);
 
   comp.competitors = withOdds.map(p => ({
     id: uid(),
