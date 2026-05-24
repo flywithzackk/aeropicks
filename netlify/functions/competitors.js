@@ -53,8 +53,8 @@ export default async (req, context) => {
     const idx = comp.competitors.findIndex(c => c.id === competitorId);
     if (idx === -1) return json({ error: 'competitor not found' }, 404);
 
-    // Allow updating: name, country, balloon, photo, ranking data, override odds
-    const fields = ['name', 'country', 'balloon', 'balloonPhoto', 'photo', 'world', 'us'];
+    // Allow updating: name, country, balloon, photo, ranking data, override odds, banner number
+    const fields = ['name', 'number', 'country', 'balloon', 'balloonPhoto', 'photo', 'world', 'us'];
     for (const f of fields) {
       if (body[f] !== undefined) comp.competitors[idx][f] = body[f];
     }

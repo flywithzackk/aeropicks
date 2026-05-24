@@ -440,7 +440,45 @@ function RosterTab() {
                     const isWithdrawn = !!p.withdrawn;
                     const rows = [
                       <tr key={p.id} style={isWithdrawn ? { opacity: 0.55 } : {}}>
-                          <td style={{ paddingLeft: 24, fontFamily: 'var(--mono)', color: 'var(--ink-mute)' }}>{p.number}</td>
+                          <td style={{ paddingLeft: 24 }}>
+                            <input
+                              type="text"
+                              defaultValue={p.number || ''}
+                              className="input"
+                              style={{
+                                width: 56,
+                                padding: '6px 8px',
+                                fontFamily: 'var(--mono)',
+                                fontSize: 13,
+                                textAlign: 'center',
+                                background: 'var(--bg-tint)',
+                              }}
+                              onBlur={async (e) => {
+                                const newNum = e.target.value.trim();
+                                if (newNum === (p.number || '')) return;
+                                const res = await authFetch('/api/competitors', {
+                                  method: 'PATCH',
+                                  body: JSON.stringify({
+                                    competitionId: selectedId,
+                                    competitorId: p.id,
+                                    number: newNum,
+                                  }),
+                                });
+                                if (res.ok) {
+                                  showToast(`Banner # updated to ${newNum}`);
+                                  reload();
+                                } else {
+                                  showToast('Update failed', 'error');
+                                  e.target.value = p.number || '';
+                                }
+                              }}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter') e.target.blur();
+                                if (e.key === 'Escape') { e.target.value = p.number || ''; e.target.blur(); }
+                              }}
+                              title="Banner / basket number — click to edit"
+                            />
+                          </td>
                           <td>
                             <div style={{ display: 'flex', alignItems: 'center', gap: 10 }}>
                               {p.photo ? <img src={p.photo} style={{ width: 36, height: 36, borderRadius: 'var(--r-sm)', objectFit: 'cover' }} /> : <div style={{ width: 36, height: 36, borderRadius: 'var(--r-sm)', background: 'var(--bg-tint)' }} />}
@@ -482,7 +520,7 @@ function RosterTab() {
                                 const data = await res.json();
                                 if (res.ok) {
                                   showToast(next ? `${p.name} withdrawn · ${data.refundsIssued} bets refunded` : `${p.name} re-instated`);
-                                  loadRoster(competition.id);
+                                  reload();
                                 } else {
                                   showToast(data.error || 'Failed', 'error');
                                 }
