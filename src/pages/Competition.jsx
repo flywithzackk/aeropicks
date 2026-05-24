@@ -15,6 +15,23 @@ export default function Competition() {
   const [selectedPilot, setSelectedPilot] = useState(null);
   const [selectedPlace, setSelectedPlace] = useState(1);
   const [pointInput, setPointInput] = useState(50);
+  const [fieldSort, setFieldSort] = useState('banner');
+
+  const sortedCompetitors = useMemo(() => {
+    if (!comp?.competitors) return [];
+    const list = [...comp.competitors];
+    switch (fieldSort) {
+      case 'bestOdds':
+        return list.sort((a, b) => (a.oddsByPlace?.[1] || 999) - (b.oddsByPlace?.[1] || 999));
+      case 'worstOdds':
+        return list.sort((a, b) => (b.oddsByPlace?.[1] || 0) - (a.oddsByPlace?.[1] || 0));
+      case 'name':
+        return list.sort((a, b) => a.name.localeCompare(b.name));
+      case 'banner':
+      default:
+        return list.sort((a, b) => Number(a.number || 999) - Number(b.number || 999));
+    }
+  }, [comp?.competitors, fieldSort]);
 
   useEffect(() => {
     Promise.all([
@@ -196,13 +213,86 @@ export default function Competition() {
         </section>
       )}
 
+      {/* LIVE TRACKER (provisional standings + updates feed) */}
+      {comp.dailyUpdates && comp.dailyUpdates.length > 0 && (
+        <section style={{ marginBottom: 28 }}>
+          <div className="section-head">
+            <div className="section-title">
+              <div className="section-bar" style={{ background: 'var(--lime)' }} />
+              <h2 className="h2-display">Live Updates</h2>
+            </div>
+            <span className="small">{comp.dailyUpdates.length} {comp.dailyUpdates.length === 1 ? 'update' : 'updates'}</span>
+          </div>
+          <div className="updates-feed">
+            {comp.dailyUpdates.slice(0, 5).map(u => (
+              <div key={u.id} className="update-card">
+                <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'baseline', marginBottom: 6 }}>
+                  <div>
+                    {u.day && <span className="kicker" style={{ color: 'var(--lime)', marginRight: 8 }}>{u.day}</span>}
+                    <strong style={{ color: 'var(--ink)' }}>{u.title}</strong>
+                  </div>
+                  <span className="small" style={{ color: 'var(--ink-mute)', fontSize: 11 }}>
+                    {new Date(u.postedAt).toLocaleDateString(undefined, { month: 'short', day: 'numeric' })}
+                  </span>
+                </div>
+                {u.body && <p className="small" style={{ color: 'var(--ink-soft)' }}>{u.body}</p>}
+              </div>
+            ))}
+          </div>
+        </section>
+      )}
+
+      {comp.provisionalResults && Object.keys(comp.provisionalResults).length > 0 && (
+        <section style={{ marginBottom: 28 }}>
+          <div className="section-head">
+            <div className="section-title">
+              <div className="section-bar" style={{ background: 'var(--lime)' }} />
+              <h2 className="h2-display">Provisional Standings</h2>
+            </div>
+            <span className="small">Updates as the event progresses</span>
+          </div>
+          <div className="standings-list">
+            {Object.entries(comp.provisionalResults)
+              .map(([pilotId, place]) => {
+                const pilot = comp.competitors?.find(c => c.id === pilotId);
+                return pilot ? { ...pilot, place: Number(place) } : null;
+              })
+              .filter(Boolean)
+              .sort((a, b) => a.place - b.place)
+              .map(p => (
+                <div key={p.id} className="standing-row">
+                  <span className="standing-place">{ordinal(p.place)}</span>
+                  {p.photo ? <img src={p.photo} alt="" className="standing-photo" /> : <div className="standing-photo standing-photo-placeholder">?</div>}
+                  <div style={{ flex: 1, minWidth: 0 }}>
+                    <div className="standing-name">{p.name}</div>
+                    {p.balloon && <div className="small" style={{ fontStyle: 'italic' }}>"{p.balloon}"</div>}
+                  </div>
+                  <span className="small" style={{ color: 'var(--ink-mute)' }}>Banner #{p.number}</span>
+                </div>
+              ))}
+          </div>
+        </section>
+      )}
+
       {/* THE FIELD */}
       <div className="section-head">
         <div className="section-title">
           <div className="section-bar" style={{ background: 'var(--electric)' }} />
           <h2 className="h2-display">The Field</h2>
         </div>
-        <span className="small">{comp.competitors?.length || 0} pilots · Tap to pick</span>
+        <div style={{ display: 'flex', gap: 12, alignItems: 'center' }}>
+          <select
+            className="select field-sort"
+            value={fieldSort}
+            onChange={(e) => setFieldSort(e.target.value)}
+          >
+            <option value="banner">Sort: Banner #</option>
+            <option value="bestOdds">Sort: Best Odds First</option>
+            <option value="worstOdds">Sort: Longshots First</option>
+            <option value="name">Sort: Name (A–Z)</option>
+          </select>
+          <span className="small">{comp.competitors?.length || 0} pilots</span>
+        </div>
       </div>
 
       {(!comp.competitors || comp.competitors.length === 0) ? (
@@ -212,7 +302,7 @@ export default function Competition() {
         </div>
       ) : (
         <div className="pilot-grid">
-          {comp.competitors.map((p, i) => {
+          {sortedCompetitors.map((p, i) => {
             const winOdds = p.oddsByPlace?.[1] || 0;
             const picksOnThisPilot = Object.entries(bets).filter(([k]) => k.startsWith(p.id + ':')).length;
             return (
@@ -236,7 +326,7 @@ export default function Competition() {
                   )}
                   <div style={{ flex: 1, minWidth: 0 }}>
                     <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'flex-start', gap: 8 }}>
-                      <span className="pilot-rank">#{p.number || (i + 1)}</span>
+                      <span className="pilot-rank">Banner #{p.number || (i + 1)}</span>
                       {picksOnThisPilot > 0 && (
                         <span className="tag" style={{ background: 'var(--electric-wash)', color: 'var(--electric)' }}>
                           {picksOnThisPilot} pick{picksOnThisPilot > 1 ? 's' : ''}
@@ -312,15 +402,15 @@ function PickSheet({ pilot, selectedPlace, setSelectedPlace, pointInput, setPoin
   const oddsAtPlace = pilot.oddsByPlace?.[selectedPlace] || 0;
   const potential = Math.round(pointInput * oddsAtPlace);
 
-  // Find this pilot's "smart picks" - the places where their odds are best (most likely)
-  const sortedPlaces = useMemo(() => {
-    if (!pilot.oddsByPlace) return [];
-    return Object.entries(pilot.oddsByPlace)
-      .sort((a, b) => Number(a[1]) - Number(b[1]))
-      .slice(0, 6)
-      .map(([place]) => Number(place))
-      .sort((a, b) => a - b);
-  }, [pilot]);
+  // Track the points input as a string so users can clear it / type freely.
+  const [pointStr, setPointStr] = useState(String(pointInput || ''));
+  // Keep local state in sync if pointInput changes from outside (preset buttons)
+  useEffect(() => { setPointStr(pointInput === 0 ? '' : String(pointInput)); }, [pointInput]);
+
+  // Show ALL places 1 through N as selectable buttons - no "smart pick" filter
+  const allPlaces = useMemo(() => {
+    return Array.from({ length: nPilots }, (_, i) => i + 1);
+  }, [nPilots]);
 
   return (
     <div style={{
@@ -346,45 +436,65 @@ function PickSheet({ pilot, selectedPlace, setSelectedPlace, pointInput, setPoin
               {pilot.balloon && <div className="small" style={{ fontFamily: 'var(--display)', fontStyle: 'italic' }}>"{pilot.balloon}"</div>}
             </div>
           </div>
-          <button onClick={onCancel} style={{ width: 36, height: 36, borderRadius: 'var(--r-pill)', background: 'var(--bg-tint)', fontSize: 20, fontWeight: 600 }}>×</button>
+          <button onClick={onCancel} style={{ width: 36, height: 36, borderRadius: 'var(--r-pill)', background: 'var(--bg-tint)', fontSize: 20, fontWeight: 600 }} type="button">×</button>
         </div>
 
         <div className="field">
           <label>Predicted Finishing Place</label>
-          <div style={{ display: 'flex', gap: 8, flexWrap: 'wrap' }}>
-            {sortedPlaces.map(p => (
+          <div className="place-grid">
+            {allPlaces.map(p => (
               <button key={p}
+                type="button"
                 onClick={() => setSelectedPlace(p)}
-                className={`btn ${selectedPlace === p ? 'btn-electric' : 'btn-ghost'} btn-sm`}
-                style={{ minWidth: 60 }}>
-                {ordinal(p)}
+                className={`place-btn ${selectedPlace === p ? 'active' : ''}`}>
+                <span className="place-num">{p}</span>
+                <span className="place-suffix">{ordinalSuffix(p)}</span>
               </button>
             ))}
           </div>
-          <input
-            type="number" min="1" max={nPilots}
-            className="input"
-            value={selectedPlace}
-            onChange={e => setSelectedPlace(Math.max(1, Math.min(nPilots, Number(e.target.value) || 1)))}
-            style={{ marginTop: 8 }}
-          />
         </div>
 
-        <div className="field" style={{ marginTop: 8 }}>
+        <div className="field" style={{ marginTop: 12 }}>
           <label>Points to Wager (max {remaining} available)</label>
           <div className="bet-stepper">
-            <button onClick={() => setPointInput(Math.max(0, pointInput - 10))}>–</button>
+            <button
+              type="button"
+              onClick={() => setPointInput(Math.max(0, pointInput - 10))}
+            >–</button>
             <input
-              type="number" min="0" max={remaining}
-              value={pointInput}
-              onChange={e => setPointInput(Math.max(0, Math.min(remaining, Number(e.target.value) || 0)))}
+              type="text"
+              inputMode="numeric"
+              pattern="[0-9]*"
+              value={pointStr}
+              placeholder="0"
+              onChange={e => {
+                // Allow only digits
+                const cleaned = e.target.value.replace(/[^0-9]/g, '');
+                // Strip leading zeros unless the field is just "0"
+                const noLeadingZeros = cleaned.replace(/^0+(?=\d)/, '');
+                setPointStr(noLeadingZeros);
+                // Update the actual number for downstream calculations
+                const n = noLeadingZeros === '' ? 0 : Math.min(remaining, Number(noLeadingZeros));
+                setPointInput(n);
+                // If they typed past the max, snap the visible string to match
+                if (noLeadingZeros !== '' && Number(noLeadingZeros) > remaining) {
+                  setPointStr(String(remaining));
+                }
+              }}
+              onFocus={e => e.target.select()}
             />
-            <button onClick={() => setPointInput(Math.min(remaining, pointInput + 10))}>+</button>
+            <button
+              type="button"
+              onClick={() => setPointInput(Math.min(remaining, pointInput + 10))}
+            >+</button>
           </div>
           <div style={{ display: 'flex', gap: 6, marginTop: 8 }}>
             {[25, 50, 100, 250].filter(v => v <= remaining).map(v => (
-              <button key={v} onClick={() => setPointInput(v)} className="btn btn-ghost btn-sm" style={{ flex: 1 }}>{v}</button>
+              <button key={v} type="button" onClick={() => setPointInput(v)} className="btn btn-ghost btn-sm" style={{ flex: 1 }}>{v}</button>
             ))}
+            {remaining > 0 && (
+              <button type="button" onClick={() => setPointInput(remaining)} className="btn btn-ghost btn-sm" style={{ flex: 1 }}>All ({remaining})</button>
+            )}
           </div>
         </div>
 
@@ -419,4 +529,10 @@ function ordinal(n) {
   const s = ["th", "st", "nd", "rd"];
   const v = n % 100;
   return n + (s[(v - 20) % 10] || s[v] || s[0]);
+}
+
+function ordinalSuffix(n) {
+  const s = ["th", "st", "nd", "rd"];
+  const v = n % 100;
+  return (s[(v - 20) % 10] || s[v] || s[0]);
 }

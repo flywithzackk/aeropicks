@@ -35,6 +35,8 @@ export default async (req, context) => {
         status: c.status, eventLevel: c.eventLevel || 'state',
         description: c.description, competitorCount: c.competitors?.length || 0,
         hasWildcard: !!c.wildcard,
+        logoImage: c.logoImage || null,
+        bannerImage: c.bannerImage || null,
       })),
     });
   }
@@ -56,6 +58,11 @@ export default async (req, context) => {
       description: body.description || '',
       status: body.status || 'draft',
       wildcard: body.wildcard !== undefined ? body.wildcard : (existing?.wildcard || null),
+      logoImage: body.logoImage !== undefined ? body.logoImage : (existing?.logoImage || null),
+      bannerImage: body.bannerImage !== undefined ? body.bannerImage : (existing?.bannerImage || null),
+      // Live tracker data
+      dailyUpdates: existing?.dailyUpdates || [],
+      provisionalResults: existing?.provisionalResults || {},
       competitors: existing?.competitors || [],
       createdAt: existing?.createdAt || Date.now(),
       updatedAt: Date.now(),

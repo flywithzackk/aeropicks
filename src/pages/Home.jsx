@@ -14,8 +14,10 @@ export default function Home() {
     }).catch(() => setLoading(false));
   }, []);
 
+  const liveComps = comps.filter(c => c.status === 'live' || c.status === 'locked');
+  const settledComps = comps.filter(c => c.status === 'settled');
   const liveCount = comps.filter(c => c.status === 'live').length;
-  const settledCount = comps.filter(c => c.status === 'settled').length;
+  const settledCount = settledComps.length;
 
   return (
     <div>
@@ -50,13 +52,6 @@ export default function Home() {
         </div>
       </section>
 
-      <div className="section-head">
-        <div className="section-title">
-          <div className="section-bar" style={{ background: 'var(--sky)' }} />
-          <h2 className="h2-display">Open Competitions</h2>
-        </div>
-      </div>
-
       {loading && <div style={{ padding: 60 }}><div className="spinner" /></div>}
 
       {!loading && comps.length === 0 && (
@@ -67,29 +62,85 @@ export default function Home() {
         </div>
       )}
 
-      {!loading && comps.length > 0 && (
-        <div className="card-grid">
-          {comps.map((c, i) => (
-            <Link to={`/competition/${c.id}`} key={c.id} className="comp-card fade-up" style={{ animationDelay: `${i * 0.05}s` }}>
-              <div className="comp-card-top">
-                <span className="comp-loc">{c.location || 'New Mexico'} · {c.eventLevel?.toUpperCase()}</span>
-                <span className={`tag tag-${c.status === 'settled' ? 'locked' : c.status || 'live'}`}>{c.status || 'live'}</span>
-              </div>
-              <div>
-                <h3 className="h2" style={{ fontSize: 24, marginBottom: 4 }}>{c.name}</h3>
-                <p className="small">{c.dates || 'Dates TBA'}</p>
-              </div>
-              <div className="comp-card-foot">
-                <div className="pilot-count">
-                  <span className="num" style={{ color: 'var(--sky-deep)' }}>{c.competitorCount ?? 0}</span>
-                  <span className="small">pilots</span>
-                  {c.hasWildcard && <span className="tag" style={{ background: 'var(--violet-wash)', color: 'var(--violet-deep)', marginLeft: 8 }}>+ Wildcard</span>}
+      {liveComps.length > 0 && (
+        <>
+          <div className="section-head">
+            <div className="section-title">
+              <div className="section-bar" style={{ background: 'var(--sky)' }} />
+              <h2 className="h2-display">Live Now</h2>
+            </div>
+          </div>
+          <div className="featured-comp-grid">
+            {liveComps.map((c, i) => (
+              <Link
+                to={`/competition/${c.id}`}
+                key={c.id}
+                className="rgc-feature fade-up"
+                style={{ animationDelay: `${i * 0.05}s`, textDecoration: 'none', color: 'inherit', cursor: 'pointer' }}
+              >
+                {c.bannerImage ? (
+                  <div className="rgc-feature-banner" style={{ backgroundImage: `url(${c.bannerImage})` }} />
+                ) : (
+                  <div className="rgc-feature-banner rgc-feature-banner-default" />
+                )}
+                <div className="rgc-feature-content">
+                  {c.logoImage ? (
+                    <img src={c.logoImage} alt="" className="rgc-feature-logo" />
+                  ) : (
+                    <div className="rgc-feature-logo rgc-feature-logo-default">🎈</div>
+                  )}
+                  <div className="rgc-feature-info">
+                    <div className="kicker" style={{ color: c.status === 'locked' ? 'var(--red)' : 'var(--lime)', marginBottom: 8 }}>
+                      {c.status === 'locked' ? 'Picks Locked' : 'Now Live'} · {c.location || 'New Mexico'}
+                    </div>
+                    <h2 className="h1-display" style={{ marginBottom: 6 }}>{c.name}</h2>
+                    <p className="small" style={{ marginBottom: 6 }}>{c.dates || 'Dates TBA'}</p>
+                    <p className="small" style={{ color: 'var(--ink-mute)' }}>
+                      {c.competitorCount ?? 0} pilots · {(c.eventLevel || 'state').toUpperCase()}
+                      {c.hasWildcard && <span className="tag" style={{ background: 'var(--violet-wash)', color: 'var(--violet)', marginLeft: 8 }}>+ Wildcard</span>}
+                    </p>
+                    <span className="btn btn-sky btn-lg" style={{ marginTop: 20 }}>
+                      {c.status === 'locked' ? 'View Picks →' : 'Place Picks →'}
+                    </span>
+                  </div>
                 </div>
-                <span className="btn btn-sky btn-sm">View →</span>
-              </div>
-            </Link>
-          ))}
-        </div>
+              </Link>
+            ))}
+          </div>
+        </>
+      )}
+
+      {settledComps.length > 0 && (
+        <>
+          <div className="section-head" style={{ marginTop: 40 }}>
+            <div className="section-title">
+              <div className="section-bar" style={{ background: 'var(--ink-mute)' }} />
+              <h2 className="h2-display">Settled</h2>
+            </div>
+            <span className="small">{settledComps.length} past events</span>
+          </div>
+          <div className="card-grid">
+            {settledComps.map((c, i) => (
+              <Link to={`/competition/${c.id}`} key={c.id} className="comp-card fade-up" style={{ animationDelay: `${i * 0.05}s` }}>
+                <div className="comp-card-top">
+                  <span className="comp-loc">{c.location || 'New Mexico'} · {c.eventLevel?.toUpperCase()}</span>
+                  <span className="tag tag-locked">settled</span>
+                </div>
+                <div>
+                  <h3 className="h2" style={{ fontSize: 24, marginBottom: 4 }}>{c.name}</h3>
+                  <p className="small">{c.dates || ''}</p>
+                </div>
+                <div className="comp-card-foot">
+                  <div className="pilot-count">
+                    <span className="num" style={{ color: 'var(--sky-deep)' }}>{c.competitorCount ?? 0}</span>
+                    <span className="small">pilots</span>
+                  </div>
+                  <span className="btn btn-ghost btn-sm">Results →</span>
+                </div>
+              </Link>
+            ))}
+          </div>
+        </>
       )}
     </div>
   );

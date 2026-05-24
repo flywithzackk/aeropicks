@@ -80,6 +80,29 @@ export function AuthProvider({ children }) {
     return u;
   };
 
+  const doExternalProvider = (provider) => {
+    // gotrue-js opens the provider login URL in a popup/redirect
+    // For Netlify Identity with Google enabled, this kicks off OAuth
+    const url = `${window.location.origin}/.netlify/identity/authorize?provider=${provider}`;
+    window.location.href = url;
+  };
+
+  // Handle redirect-back from external provider (Identity puts token in URL hash)
+  useEffect(() => {
+    if (typeof window === 'undefined' || !window.location.hash) return;
+    const hash = window.location.hash.substring(1);
+    const params = new URLSearchParams(hash);
+    const access = params.get('access_token');
+    if (access) {
+      // This is gotrue-js territory; the library typically handles it,
+      // but we can refresh after the redirect
+      setTimeout(() => {
+        const u = auth.currentUser();
+        if (u) setUser(buildUserObj(u));
+      }, 100);
+    }
+  }, []);
+
   const doSignUp = async (email, password, username, photoUrl) => {
     // Step 1: create the account with metadata
     await auth.signup(email, password, {
@@ -192,6 +215,7 @@ export function AuthProvider({ children }) {
         authModal,
         recoveryToken,
         doSignIn,
+        doExternalProvider,
         doSignUp,
         doForgotPassword,
         doRecoverPassword,
