@@ -668,9 +668,49 @@ function ResultsTab() {
           )}
 
           <div className="panel" style={{ padding: 0, overflow: 'hidden' }}>
-            <div className="panel-head" style={{ padding: '22px 24px', marginBottom: 0 }}>
-              <h2 className="h2">{competition.name} — Finishing Places</h2>
-              <span className="small">{Object.values(results).filter(v => v).length} of {competition.competitors?.length || 0} entered</span>
+            <div className="panel-head" style={{ padding: '22px 24px', marginBottom: 0, display: 'flex', justifyContent: 'space-between', alignItems: 'center', flexWrap: 'wrap', gap: 8 }}>
+              <div>
+                <h2 className="h2">{competition.name} — Finishing Places</h2>
+                <span className="small">{Object.values(results).filter(v => v).length} of {competition.competitors?.length || 0} entered</span>
+              </div>
+              <button
+                className="btn btn-ghost btn-sm"
+                style={{ color: 'var(--sky)', borderColor: 'var(--sky)' }}
+                onClick={async () => {
+                  const url = prompt(`Paste the WatchMeFly URL for final results.\n\nExample: https://watchmefly.net/events/event.php?e=rgc2026&v=tta`);
+                  if (!url) return;
+                  showToast('Pulling results from WatchMeFly…');
+                  const res = await authFetch('/api/scrape-standings', {
+                    method: 'POST',
+                    body: JSON.stringify({ competitionId: selectedId, url }),
+                  });
+                  const data = await res.json();
+                  if (res.ok) {
+                    // Use the matched standings as final results
+                    const newResults = { ...results };
+                    for (const [pilotId, place] of Object.entries(data.provisionalResults || {})) {
+                      newResults[pilotId] = Number(place);
+                    }
+                    setResults(newResults);
+                    let msg = `Matched ${data.matched.length} of ${data.standingsCount}`;
+                    if (data.unmatched.length > 0) msg += ` (${data.unmatched.length} unmatched)`;
+                    showToast(msg);
+                  } else {
+                    const details = [
+                      data.error || 'Scrape failed',
+                      data.hint ? `\nHint: ${data.hint}` : '',
+                      data.url ? `\nURL hit: ${data.url}` : '',
+                      data.httpStatus !== undefined ? `\nHTTP status: ${data.httpStatus}` : '',
+                      data.htmlLength !== undefined ? `\nHTML length: ${data.htmlLength} chars` : '',
+                      data.pilotAnchorsFound !== undefined ? `\nPilot links found: ${data.pilotAnchorsFound}` : '',
+                      data.placeCellsFound !== undefined ? `\nPlace cells found: ${data.placeCellsFound}` : '',
+                      data.htmlSnippet ? `\n\nFirst 600 chars of response:\n${data.htmlSnippet}` : '',
+                    ].filter(Boolean).join('');
+                    alert(details);
+                    showToast(data.error || 'Scrape failed', 'error');
+                  }
+                }}
+              >Import from WatchMeFly</button>
             </div>
             <div className="table-wrap">
               <table className="table">

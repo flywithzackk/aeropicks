@@ -26,10 +26,12 @@ export default async (req, context) => {
 
   if (req.method === 'POST') {
     const body = await req.json();
+    const existing = (await store.get(user.id, { type: 'json' })) || {};
     const profile = {
+      ...existing,
       userId: user.id,
-      username: body.username || user.email?.split('@')[0],
-      photo: body.photo || null,
+      username: body.username || existing.username || user.user_metadata?.username || user.email?.split('@')[0],
+      photo: body.photo !== undefined ? body.photo : (existing.photo || user.user_metadata?.photo || null),
       email: user.email,
       updatedAt: Date.now(),
     };

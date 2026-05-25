@@ -17,6 +17,22 @@ export function AuthProvider({ children }) {
   const [recoveryToken, setRecoveryToken] = useState(null);
   const [confirmToken, setConfirmToken] = useState(null);
 
+  // Best-effort sync of user metadata to the profiles store.
+  // Safe to call repeatedly - server-side merge preserves other fields.
+  async function syncProfile(u) {
+    try {
+      const token = await u.jwt();
+      await fetch('/api/profile', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
+        body: JSON.stringify({
+          username: u.user_metadata?.username,
+          photo: u.user_metadata?.photo,
+        }),
+      });
+    } catch {}
+  }
+
   useEffect(() => {
     // Check for tokens in the URL hash (Netlify Identity uses hash fragments)
     // Examples: #recovery_token=xxx, #confirmation_token=xxx, #invite_token=xxx
@@ -49,6 +65,8 @@ export function AuthProvider({ children }) {
     const current = auth.currentUser();
     if (current) {
       setUser(buildUserObj(current));
+      // Self-heal: ensure profile is synced even for users who signed up before this fix shipped
+      syncProfile(current);
     }
     setReady(true);
   }, []);
@@ -77,6 +95,8 @@ export function AuthProvider({ children }) {
   const doSignIn = async (email, password) => {
     const u = await auth.login(email, password, true);
     setUser(buildUserObj(u));
+    // Self-heal: re-sync profile on every sign-in in case signup failed to do so
+    syncProfile(u);
     return u;
   };
 

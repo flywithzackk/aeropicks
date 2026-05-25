@@ -25,10 +25,13 @@ export default async (req, context) => {
   if (targetUserId) {
     // Detail view for one member - return all their bets enriched with pilot + competition info
     const profile = await profilesStore.get(targetUserId, { type: 'json' });
-    if (!profile) return json({ error: 'member not found' }, 404);
-
     const userBets = (await betsStore.get(targetUserId, { type: 'json' })) || {};
     const winnings = (await winningsStore.get(targetUserId, { type: 'json' })) || { total: 0, history: [] };
+
+    // If there's no profile AND no bets, this user doesn't exist on our side
+    if (!profile && Object.keys(userBets).length === 0) {
+      return json({ error: 'member not found' }, 404);
+    }
 
     const allBets = [];
     for (const [compId, compBets] of Object.entries(userBets)) {
@@ -56,25 +59,33 @@ export default async (req, context) => {
 
     return json({
       member: {
-        userId: profile.userId,
-        username: profile.username,
-        photo: profile.photo,
-        email: profile.email,
-        simulated: !!profile.simulated,
+        userId: targetUserId,
+        username: profile?.username || `(no profile) ${targetUserId.slice(0, 8)}`,
+        photo: profile?.photo || null,
+        email: profile?.email || '(unknown)',
+        simulated: !!profile?.simulated,
+        noProfile: !profile,
         totalWon: winnings.total || 0,
       },
       bets: allBets,
     });
   }
 
-  // List view
-  const { blobs } = await profilesStore.list();
+  // List view — combine profiles store + bets store so we surface every active user,
+  // even if their profile sync failed at signup
+  const profileBlobs = await profilesStore.list();
+  const betsBlobs = await betsStore.list();
+
+  const userIds = new Set();
+  for (const b of profileBlobs.blobs) userIds.add(b.key);
+  for (const b of betsBlobs.blobs) userIds.add(b.key);
+
   const members = [];
-  for (const b of blobs) {
-    const p = await profilesStore.get(b.key, { type: 'json' });
-    if (!p) continue;
-    const winnings = (await winningsStore.get(b.key, { type: 'json' })) || { total: 0 };
-    const userBets = (await betsStore.get(b.key, { type: 'json' })) || {};
+  for (const userId of userIds) {
+    const p = await profilesStore.get(userId, { type: 'json' });
+    const winnings = (await winningsStore.get(userId, { type: 'json' })) || { total: 0 };
+    const userBets = (await betsStore.get(userId, { type: 'json' })) || {};
+
     let betCount = 0;
     const competitions = new Set();
     for (const [compId, compBets] of Object.entries(userBets)) {
@@ -82,13 +93,19 @@ export default async (req, context) => {
       betCount += n;
       if (n > 0) competitions.add(compId);
     }
+
+    // If no profile exists but the user has bets, surface a stub entry
+    // with whatever info we can scrape (userId only)
+    if (!p && betCount === 0) continue; // skip ghosts with neither
+
     members.push({
-      userId: p.userId,
-      username: p.username,
-      photo: p.photo,
-      email: p.email,
-      simulated: !!p.simulated,
-      joinedAt: p.updatedAt,
+      userId,
+      username: p?.username || `(no profile) ${userId.slice(0, 8)}`,
+      photo: p?.photo || null,
+      email: p?.email || '(unknown)',
+      simulated: !!p?.simulated,
+      noProfile: !p,
+      joinedAt: p?.updatedAt || null,
       totalWon: winnings.total || 0,
       betCount,
       competitionCount: competitions.size,
