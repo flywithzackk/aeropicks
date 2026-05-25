@@ -84,25 +84,38 @@ export default async (req, context) => {
   scrapeUrl = scrapeUrl.replace(/&v=[a-z]+/, '&v=tta');
 
   let html;
+  let httpStatus;
   try {
     const r = await fetch(scrapeUrl, {
-      headers: { 'User-Agent': 'Aeropicks/1.0 (https://aeropicks.com)' },
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
     });
-    if (!r.ok) return json({ error: `WatchMeFly returned ${r.status}` }, 502);
+    httpStatus = r.status;
+    if (!r.ok) return json({ error: `WatchMeFly returned ${r.status}`, url: scrapeUrl }, 502);
     html = await r.text();
   } catch (ex) {
-    return json({ error: `Could not reach WatchMeFly: ${ex.message}` }, 502);
+    return json({ error: `Could not reach WatchMeFly: ${ex.message}`, url: scrapeUrl }, 502);
   }
 
   const standings = parseStandings(html);
   if (standings.length === 0) {
-    // Give the admin enough info to diagnose. Include first 200 chars of HTML.
-    const snippet = html.slice(0, 200).replace(/\s+/g, ' ');
+    // Diagnostic info to help debug
+    const snippet = html.slice(0, 600).replace(/\s+/g, ' ');
+    // Count what we DID find
+    const anchorCount = (html.match(/pilot\.php\?pid=/gi) || []).length;
+    const placeCount = (html.match(/<td[^>]*>\s*\d+\s*\.?\s*<\/td>/gi) || []).length;
     return json({
       error: 'No standings parsed from that page',
-      hint: 'The scraper looks for table rows with pilot profile links. Make sure the URL points to the Competition Totals page (it should have &v=tta in the URL).',
-      htmlSnippet: snippet,
+      hint: 'The HTML structure may have changed, or the URL points to the wrong page. Try the URL with &v=tta at the end.',
+      url: scrapeUrl,
+      httpStatus,
       htmlLength: html.length,
+      pilotAnchorsFound: anchorCount,
+      placeCellsFound: placeCount,
+      htmlSnippet: snippet,
     }, 422);
   }
 

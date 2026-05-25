@@ -996,6 +996,18 @@ function TrackerTab() {
                     if (data.unmatched.length > 0) msg += ` (${data.unmatched.length} unmatched)`;
                     showToast(msg);
                   } else {
+                    // Show detailed diagnostic so we can debug
+                    const details = [
+                      data.error || 'Scrape failed',
+                      data.hint ? `\nHint: ${data.hint}` : '',
+                      data.url ? `\nURL hit: ${data.url}` : '',
+                      data.httpStatus !== undefined ? `\nHTTP status: ${data.httpStatus}` : '',
+                      data.htmlLength !== undefined ? `\nHTML length: ${data.htmlLength} chars` : '',
+                      data.pilotAnchorsFound !== undefined ? `\nPilot links found: ${data.pilotAnchorsFound}` : '',
+                      data.placeCellsFound !== undefined ? `\nPlace cells found: ${data.placeCellsFound}` : '',
+                      data.htmlSnippet ? `\n\nFirst 600 chars of response:\n${data.htmlSnippet}` : '',
+                    ].filter(Boolean).join('');
+                    alert(details);
                     showToast(data.error || 'Scrape failed', 'error');
                   }
                 }}
