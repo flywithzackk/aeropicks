@@ -6,41 +6,55 @@ import { getUserFromContext, unauthorized, forbidden, json, stores } from './_sh
 // Returns: { matched: [...], unmatched: [...], provisionalResults: {...} }
 
 function parseStandings(html) {
-  // WatchMeFly's totals table can be HTML in various forms. We do a two-step parse:
-  // 1. Find all anchor tags that point to pilot profiles (these are the pilot rows)
-  // 2. For each match, look backward in the surrounding text for the place number
+  // WatchMeFly has multiple totals page formats:
+  //   &v=tta — anchor text is "3 - SKINNER, Jobe" (banner number INSIDE the link)
+  //   &v=tt  — text is "#3 - <a>SKINNER, Jobe</a>" (banner number OUTSIDE the link)
   //
-  // This is more forgiving than a strict structural regex.
+  // Strategy: find every pilot anchor (just the name), then look backward for the
+  // most recent place cell. Banner number is captured if present nearby but not required.
 
   const results = [];
-  // Find every pilot anchor: <a href="...pilot.php?pid=X">NUM - NAME</a>
-  const anchorRe = /<a\s+[^>]*href="[^"]*pilot\.php\?pid=([^&"]+)[^"]*"[^>]*>\s*(\d+)\s*-\s*([^<]+?)\s*<\/a>/gi;
+  // Anchor pattern that works for BOTH formats — just captures whatever text is in the anchor
+  const anchorRe = /<a\s+[^>]*href="[^"]*pilot\.php\?pid=([^&"]+)[^"]*"[^>]*>\s*([^<]+?)\s*<\/a>/gi;
   const matches = [];
   let m;
   while ((m = anchorRe.exec(html)) !== null) {
+    let rawText = m[2].trim().replace(/\s+/g, ' ');
+    let number = null;
+    let name = rawText;
+    // Format A: "3 - SKINNER, Jobe" inside the anchor
+    const inAnchor = rawText.match(/^(\d+)\s*-\s*(.+)$/);
+    if (inAnchor) {
+      number = inAnchor[1];
+      name = inAnchor[2].trim();
+    }
     matches.push({
       index: m.index,
       pid: m[1].trim(),
-      number: m[2].trim(),
-      name: m[3].trim().replace(/\s+/g, ' '),
+      number,
+      name,
+      rawText,
     });
   }
 
-  // For each anchor, look backward in the HTML for the most recent place number
-  // (a digit followed by a period and a closing </td>)
+  // Format B: "#3 - <a>" — banner number appears in the HTML right before the anchor
+  // Look backward up to 80 chars for a pattern like "#3 - " or "#3-"
+  for (const a of matches) {
+    if (a.number) continue;
+    const lookback = html.slice(Math.max(0, a.index - 80), a.index);
+    const numMatch = lookback.match(/#\s*(\d+)\s*-\s*$/);
+    if (numMatch) a.number = numMatch[1];
+  }
+
   const placeRe = /<td[^>]*>\s*(\d+)\s*\.?\s*<\/td>/gi;
   const places = [];
   while ((m = placeRe.exec(html)) !== null) {
     places.push({ index: m.index, place: parseInt(m[1], 10) });
   }
 
-  // Match each anchor to the nearest preceding place cell
   const seen = new Set();
   for (const a of matches) {
-    // Skip duplicates (same anchor showing in nav etc.)
-    const key = a.pid;
-    if (seen.has(key)) continue;
-    // Find the place cell with the largest index < anchor index
+    if (seen.has(a.pid)) continue;
     let bestPlace = null;
     for (const p of places) {
       if (p.index < a.index) {
@@ -48,15 +62,14 @@ function parseStandings(html) {
       }
     }
     if (bestPlace && bestPlace.place > 0 && bestPlace.place < 200) {
-      // Avoid same place being assigned to multiple anchors
       if (results.some(r => r.place === bestPlace.place)) continue;
       results.push({
         place: bestPlace.place,
         pid: a.pid,
-        number: a.number,
+        number: a.number || '',
         name: a.name,
       });
-      seen.add(key);
+      seen.add(a.pid);
     }
   }
 
@@ -78,10 +91,12 @@ export default async (req, context) => {
   if (!competitionId) return json({ error: 'competitionId required' }, 400);
   if (!url || !url.includes('watchmefly.net')) return json({ error: 'WatchMeFly URL required' }, 400);
 
+  // Respect the URL the admin pasted. Only add &v=tta if no view param is set at all
+  // (WatchMeFly has multiple totals pages: tt, tta, ttd, etc — different sort orders)
   let scrapeUrl = url;
-  if (!scrapeUrl.includes('&v=')) scrapeUrl += '&v=tta';
-  // Force totals view
-  scrapeUrl = scrapeUrl.replace(/&v=[a-z]+/, '&v=tta');
+  if (!scrapeUrl.includes('v=')) {
+    scrapeUrl += (scrapeUrl.includes('?') ? '&' : '?') + 'v=tt';
+  }
 
   let html;
   let httpStatus;
