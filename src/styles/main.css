@@ -2711,3 +2711,58 @@ iframe#netlify-identity-widget {
 .htp-modal .hero {
   padding-top: 0 !important;
 }
+
+/* ============ LEADERBOARD TOGGLE ============ */
+.lb-toggle-bar {
+  display: flex;
+  align-items: center;
+  gap: 14px;
+  margin-bottom: 14px;
+  flex-wrap: wrap;
+}
+.lb-toggle {
+  display: inline-flex;
+  background: var(--bg-tint);
+  border: 1.5px solid var(--line);
+  border-radius: var(--r-pill);
+  padding: 4px;
+  gap: 2px;
+}
+.lb-toggle-btn {
+  padding: 8px 18px;
+  background: transparent;
+  border: none;
+  border-radius: var(--r-pill);
+  color: var(--ink-mute);
+  font-family: var(--sans);
+  font-weight: 700;
+  font-size: 13px;
+  letter-spacing: 0.02em;
+  cursor: pointer;
+  transition: background 0.14s, color 0.14s;
+}
+.lb-toggle-btn:hover:not(.lb-toggle-active) {
+  color: var(--ink);
+}
+.lb-toggle-btn.lb-toggle-active {
+  background: var(--ink);
+  color: var(--bg);
+}
+.lb-toggle-btn:disabled {
+  opacity: 0.4;
+  cursor: not-allowed;
+}
+.lb-toggle-btn.lb-toggle-sm {
+  padding: 6px 12px;
+  font-size: 11px;
+}
+.lb-round-controls {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 8px;
+}
+@media (max-width: 640px) {
+  .lb-round-controls { width: 100%; }
+  .lb-round-controls select { flex: 1; }
+}

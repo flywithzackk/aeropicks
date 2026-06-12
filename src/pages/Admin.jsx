@@ -328,7 +328,19 @@ function CompetitionsTab() {
                               });
                               const data = await res.json();
                               if (res.ok) { showToast(`Imported ${data.pilotCount} pilots`); load(); }
-                              else showToast(data.error || 'Import failed', 'error');
+                              else {
+                                const details = [
+                                  data.error || 'Import failed',
+                                  data.hint ? `\nHint: ${data.hint}` : '',
+                                  data.url ? `\nURL hit: ${data.url}` : '',
+                                  data.httpStatus !== undefined ? `\nHTTP status: ${data.httpStatus}` : '',
+                                  data.htmlLength !== undefined ? `\nHTML length: ${data.htmlLength} chars` : '',
+                                  data.pilotAnchorsFound !== undefined ? `\nPilot links found: ${data.pilotAnchorsFound}` : '',
+                                  data.htmlSnippet ? `\n\nFirst 600 chars of response:\n${data.htmlSnippet}` : '',
+                                ].filter(Boolean).join('');
+                                alert(details);
+                                showToast(data.error || 'Import failed', 'error');
+                              }
                             }}
                             style={{ marginRight: 6, color: 'var(--sky)', borderColor: 'var(--sky)' }}
                           >Import from WatchMeFly</button>

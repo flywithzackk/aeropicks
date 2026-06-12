@@ -3,46 +3,69 @@ import { calculateOdds } from './_odds.js';
 
 // Scrape pilots from a WatchMeFly event page.
 //
-// POST body: { competitionId, url }
-//   url should be like: https://watchmefly.net/events/event.php?e=rgc2026&v=pp
-//   (the &v=pp param gets the Pilots page which has the roster)
-//   We'll try both &v=pp (pilots) and &v=tta (totals) for max coverage.
+// POST body: { competitionId, url, fetchPhotos }
+//   url should be a WatchMeFly event page like:
+//     https://watchmefly.net/events/event.php?e=gtbr2026
+//     https://watchmefly.net/events/event.php?e=ygtbr2026&v=tt
+//   Handles both &v=tt and &v=tta formats.
 //
-// Adds parsed pilots to the named competition. Returns count of pilots imported.
+// Adds parsed pilots to the named competition. Returns count + diagnostic info.
 
 function parsePilots(html) {
-  const pilots = [];
-  // WatchMeFly pages use a structured HTML table for the pilot list.
-  // We parse the "tta" (totals) view which has rows like:
-  //   <td>1.</td>
-  //   <td><a href="...pilot.php?pid=...">3 - SKINNER, Jobe</a> ...flag...United States</td>
-  // We also try to extract the pilot photo from the profile page link.
+  // Pilot anchor pattern. WatchMeFly has two formats:
+  //   v=tta — anchor text is "3 - SKINNER, Jobe" (banner inside link)
+  //   v=tt  — text is "#3 - <a>SKINNER, Jobe</a>" (banner outside link)
+  // Handle both with a forgiving parse.
 
-  // Pattern: anchor with pilot.php?pid=... containing "BANNER - LASTNAME, First"
-  const anchorRe = /<a\s+href="[^"]*pilot\.php\?pid=([^&"]+)[^"]*"[^>]*>\s*(\d+)\s*-\s*([^<]+?)\s*<\/a>/gi;
+  const anchorRe = /<a\s+[^>]*href="[^"]*pilot\.php\?pid=([^&"]+)[^"]*"[^>]*>\s*([^<]+?)\s*<\/a>/gi;
+  const matches = [];
   let m;
-  const seen = new Set();
   while ((m = anchorRe.exec(html)) !== null) {
-    const pid = m[1].trim();
-    const number = m[2].trim();
-    const name = m[3].trim().replace(/\s+/g, ' ');
-    const key = `${pid}|${number}`;
-    if (seen.has(key)) continue;
-    seen.add(key);
-    pilots.push({ pid, number, name });
+    let rawText = m[2].trim().replace(/\s+/g, ' ');
+    let number = null;
+    let name = rawText;
+    // Format A: "3 - SKINNER, Jobe" inside the anchor
+    const inAnchor = rawText.match(/^(\d+)\s*-\s*(.+)$/);
+    if (inAnchor) {
+      number = inAnchor[1];
+      name = inAnchor[2].trim();
+    }
+    matches.push({
+      index: m.index,
+      pid: m[1].trim(),
+      number,
+      name,
+    });
+  }
+
+  // Format B: "#3 - <a>" - banner number appears in HTML right before the anchor
+  for (const a of matches) {
+    if (a.number) continue;
+    const lookback = html.slice(Math.max(0, a.index - 80), a.index);
+    const numMatch = lookback.match(/#\s*(\d+)\s*-\s*$/);
+    if (numMatch) a.number = numMatch[1];
+  }
+
+  // Deduplicate by pid
+  const seen = new Set();
+  const pilots = [];
+  for (const a of matches) {
+    if (seen.has(a.pid)) continue;
+    seen.add(a.pid);
+    pilots.push({ pid: a.pid, number: a.number || '', name: a.name });
   }
   return pilots;
 }
 
 async function fetchPilotPhotoFromProfile(pid) {
-  // Best-effort: fetch the pilot profile page and find a photo URL.
   try {
     const r = await fetch(`https://watchmefly.net/profile/pilot.php?pid=${pid}`, {
-      headers: { 'User-Agent': 'Aeropicks/1.0 (https://aeropicks.com)' },
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+      },
     });
     if (!r.ok) return null;
     const html = await r.text();
-    // Look for the pilot photo - usually in an <img src="...uploads/pilots/..."> tag
     const photoMatch = html.match(/<img[^>]+src="(https?:\/\/[^"]*uploads\/pilots\/[^"]+)"/i);
     return photoMatch ? photoMatch[1] : null;
   } catch {
@@ -61,27 +84,46 @@ export default async (req, context) => {
   if (!competitionId) return json({ error: 'competitionId required' }, 400);
   if (!url || !url.includes('watchmefly.net')) return json({ error: 'WatchMeFly URL required' }, 400);
 
-  // Normalize the URL to use the totals view (most reliable source of roster + numbers)
+  // Respect whatever URL the admin pasted. Only add &v=tt if no view param is set.
   let scrapeUrl = url;
-  if (!scrapeUrl.includes('&v=')) {
-    scrapeUrl += '&v=tta';
+  if (!scrapeUrl.includes('v=')) {
+    scrapeUrl += (scrapeUrl.includes('?') ? '&' : '?') + 'v=tt';
   }
 
   let html;
+  let httpStatus;
   try {
     const r = await fetch(scrapeUrl, {
-      headers: { 'User-Agent': 'Aeropicks/1.0 (https://aeropicks.com)' },
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+        'Accept-Language': 'en-US,en;q=0.5',
+      },
     });
-    if (!r.ok) return json({ error: `WatchMeFly returned ${r.status}` }, 502);
+    httpStatus = r.status;
+    if (!r.ok) return json({ error: `WatchMeFly returned ${r.status}`, url: scrapeUrl, httpStatus }, 502);
     html = await r.text();
   } catch (ex) {
-    return json({ error: `Could not reach WatchMeFly: ${ex.message}` }, 502);
+    return json({ error: `Could not reach WatchMeFly: ${ex.message}`, url: scrapeUrl }, 502);
   }
 
   const parsed = parsePilots(html);
-  if (parsed.length === 0) return json({ error: 'No pilots found at that URL — make sure it is the event totals/pilots page' }, 422);
+  if (parsed.length === 0) {
+    // Detailed diagnostic so admin can see what happened
+    const snippet = html.slice(0, 600).replace(/\s+/g, ' ');
+    const anchorCount = (html.match(/pilot\.php\?pid=/gi) || []).length;
+    return json({
+      error: 'No pilots parsed from that page',
+      hint: 'The page loaded but no pilot links were extracted. Check that the URL points to an event page with a pilot roster.',
+      url: scrapeUrl,
+      httpStatus,
+      htmlLength: html.length,
+      pilotAnchorsFound: anchorCount,
+      htmlSnippet: snippet,
+    }, 422);
+  }
 
-  // Optionally fetch photos for each pilot (slow - limit to 32 to be safe)
+  // Optionally fetch photos for each pilot (slow but useful)
   const enriched = [];
   const photoLimit = fetchPhotos ? parsed.length : 0;
   for (let i = 0; i < parsed.length; i++) {
@@ -125,7 +167,7 @@ export default async (req, context) => {
 
   comp.competitors = withOdds.map(p => ({
     id: uid(),
-    number: String(p.num),
+    number: String(p.num || ''),
     name: p.name,
     photo: p.photo,
     balloon: p.balloon,
