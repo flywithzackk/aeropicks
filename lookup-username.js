@@ -1,106 +1,98 @@
-import { getUserFromContext, unauthorized, json, stores } from './_shared.js';
-
-// Placement bet model:
-//   bet = { pilotId, place, points, odds }
-// Member can have multiple bets per pilot (one per place predicted), but each unique
-// (pilotId+place) is one bet. Re-submitting overrides.
-//
-// Wildcard: a free guess. { pilotId } or { value } depending on wildcard type.
+import { getUserFromContext, unauthorized, forbidden, json, stores, uid } from './_shared.js';
+import { calculateOdds } from './_odds.js';
 
 export default async (req, context) => {
   const user = getUserFromContext(context, req);
   if (!user) return unauthorized();
+  if (!user.isAdmin) return forbidden();
 
-  const betsStore = stores.bets();
-  const compStore = stores.competitions();
-
-  if (req.method === 'GET') {
-    const url = new URL(req.url);
-    const competitionId = url.searchParams.get('competitionId');
-    const key = `${user.id}`;
-    const userBets = (await betsStore.get(key, { type: 'json' })) || {};
-
-    if (competitionId) {
-      const data = userBets[competitionId] || { bets: [], wildcard: null, balance: 1000 };
-      return json(data);
-    }
-
-    // Return all bets across competitions, enriched
-    const result = [];
-    for (const [compId, compData] of Object.entries(userBets)) {
-      const comp = await compStore.get(compId, { type: 'json' });
-      if (!comp) continue;
-      for (const b of (compData.bets || [])) {
-        const competitor = comp.competitors?.find(c => c.id === b.pilotId);
-        if (!competitor) continue;
-        result.push({
-          competitionId: compId,
-          competitionName: comp.name,
-          pilotName: competitor.name,
-          pilotPhoto: competitor.photo,
-          balloon: competitor.balloon,
-          place: b.place,
-          points: b.points,
-          odds: b.odds,
-          status: b.status || 'pending',
-          payout: b.payout || 0,
-        });
-      }
-    }
-    return json({ bets: result });
-  }
+  const store = stores.competitions();
 
   if (req.method === 'POST') {
-    const body = await req.json();
-    const { competitionId, bets, wildcard } = body;
-    const comp = await compStore.get(competitionId, { type: 'json' });
+    const { competitionId, competitors, mode = 'append' } = await req.json();
+    const comp = await store.get(competitionId, { type: 'json' });
     if (!comp) return json({ error: 'competition not found' }, 404);
-    if (comp.status === 'locked') return json({ error: 'betting is locked for this competition' }, 400);
-    if (comp.status === 'settled') return json({ error: 'competition already settled' }, 400);
-    if (comp.status === 'draft') return json({ error: 'competition not open' }, 400);
 
-    // Validate: each bet has pilotId + place + points + odds
-    const cleanBets = [];
-    let total = 0;
-    for (const b of (bets || [])) {
-      const points = Math.max(0, Math.floor(Number(b.points) || 0));
-      const place = Math.max(1, Math.floor(Number(b.place) || 0));
-      if (points <= 0) continue;
-      const pilot = comp.competitors.find(c => c.id === b.pilotId);
-      if (!pilot) continue;
-      // Use override if set, otherwise algorithm odds
-      const odds = pilot.overrideOdds?.[place] ?? pilot.oddsByPlace?.[place] ?? 0;
-      if (odds <= 0) continue;
-      cleanBets.push({ pilotId: b.pilotId, place, points, odds, status: 'pending' });
-      total += points;
+    const incoming = (competitors || []).map(c => ({
+      id: uid(),
+      number: c.number || '',
+      name: c.name,
+      country: c.country || '',
+      balloon: c.balloon || '',
+      balloonPhoto: c.balloonPhoto || null,
+      photo: c.photo || null,
+      world: c.world || null,
+      us: c.us || null,
+      history: c.history || [],
+      stateResults: c.stateResults || [],
+      overrideOdds: null,
+    }));
+
+    let newCompetitors;
+    if (mode === 'replace') newCompetitors = incoming;
+    else newCompetitors = [...(comp.competitors || []), ...incoming];
+
+    // Re-run odds algorithm for the full roster
+    const withOdds = calculateOdds(newCompetitors, comp.eventLevel || 'state');
+    comp.competitors = newCompetitors.map((c, i) => ({
+      ...c,
+      skillScore: withOdds[i].skillScore,
+      top10Pct: withOdds[i].top10Pct,
+      oddsByPlace: withOdds[i].oddsByPlace,
+    }));
+    comp.updatedAt = Date.now();
+    await store.setJSON(competitionId, comp);
+    return json({ competition: comp });
+  }
+
+  if (req.method === 'PATCH') {
+    const body = await req.json();
+    const { competitionId, competitorId } = body;
+    const comp = await store.get(competitionId, { type: 'json' });
+    if (!comp) return json({ error: 'competition not found' }, 404);
+    const idx = comp.competitors.findIndex(c => c.id === competitorId);
+    if (idx === -1) return json({ error: 'competitor not found' }, 404);
+
+    // Allow updating: name, country, balloon, photo, ranking data, override odds, banner number
+    const fields = ['name', 'number', 'country', 'balloon', 'balloonPhoto', 'photo', 'world', 'us'];
+    for (const f of fields) {
+      if (body[f] !== undefined) comp.competitors[idx][f] = body[f];
     }
-
-    if (total > 1000) {
-      return json({ error: `Total wagered (${total}) exceeds 1000 point stake` }, 400);
+    // Override odds: { 1: 5.5, 2: 8.0, ... } - or null to clear
+    if (body.overrideOdds !== undefined) comp.competitors[idx].overrideOdds = body.overrideOdds;
+    // History updates trigger re-run of algorithm
+    if (body.history !== undefined || body.stateResults !== undefined) {
+      if (body.history !== undefined) comp.competitors[idx].history = body.history;
+      if (body.stateResults !== undefined) comp.competitors[idx].stateResults = body.stateResults;
+      const recalc = calculateOdds(comp.competitors, comp.eventLevel || 'state');
+      comp.competitors = comp.competitors.map((c, i) => ({
+        ...c,
+        skillScore: recalc[i].skillScore,
+        top10Pct: recalc[i].top10Pct,
+        oddsByPlace: recalc[i].oddsByPlace,
+      }));
     }
+    comp.updatedAt = Date.now();
+    await store.setJSON(competitionId, comp);
+    return json({ competitor: comp.competitors[idx] });
+  }
 
-    // Wildcard is free - separate from points
-    let cleanWildcard = null;
-    if (wildcard && comp.wildcard) {
-      cleanWildcard = {
-        type: comp.wildcard.type,
-        value: wildcard.value, // pilotId, place number, or whatever the wildcard asks
-        status: 'pending',
-        payout: 0,
-      };
+  if (req.method === 'DELETE') {
+    const url = new URL(req.url);
+    const competitionId = url.searchParams.get('competitionId');
+    const competitorId = url.searchParams.get('competitorId');
+    const comp = await store.get(competitionId, { type: 'json' });
+    if (!comp) return json({ error: 'competition not found' }, 404);
+    comp.competitors = comp.competitors.filter(c => c.id !== competitorId);
+    // Re-run odds with smaller field
+    if (comp.competitors.length > 0) {
+      const recalc = calculateOdds(comp.competitors, comp.eventLevel || 'state');
+      comp.competitors = comp.competitors.map((c, i) => ({
+        ...c, skillScore: recalc[i].skillScore, top10Pct: recalc[i].top10Pct, oddsByPlace: recalc[i].oddsByPlace,
+      }));
     }
-
-    const key = `${user.id}`;
-    const allBets = (await betsStore.get(key, { type: 'json' })) || {};
-    allBets[competitionId] = {
-      bets: cleanBets,
-      wildcard: cleanWildcard,
-      remaining: 1000 - total,
-      placedAt: Date.now(),
-    };
-    await betsStore.setJSON(key, allBets);
-
-    return json({ ok: true, total, remaining: 1000 - total });
+    await store.setJSON(competitionId, comp);
+    return json({ ok: true });
   }
 
   return json({ error: 'method not allowed' }, 405);

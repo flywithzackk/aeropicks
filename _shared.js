@@ -1,97 +1,210 @@
-// Aeropicks Odds Algorithm v3 - event-aware weighting
-// State events: state > national > world
-// National events: national > world > state
-// World events: world > national > state
+import { getUserFromContext, unauthorized, forbidden, json, stores } from './_shared.js';
+import { calculateOdds } from './_odds.js';
 
-const WEIGHTS = {
-  state:    { state: 5.0, national: 2.5, world: 1.5, form: 1.5 },
-  national: { state: 1.5, national: 5.0, world: 3.0, form: 1.5 },
-  world:    { state: 0.5, national: 2.5, world: 5.0, form: 1.5 },
-};
+// Pull US National Rankings from the BFA National Eligibility List, hosted at:
+//   https://watchmefly.net/bfa/nel.php?year=YYYY
+//
+// We match competitors by their WatchMeFly PID (perfect 1:1 match, no fuzzy name matching).
+// For pilots without a stored wmfPid (e.g. manually added or seeded), we fall back to
+// fuzzy name matching as a last resort.
+//
+// POST body: { competitionId, year? }
+// Returns: { matched: [...], unmatched: [...], pilotsUpdated, recalculated: true }
 
-function skillScore(pilot, eventLevel = 'state') {
-  const w = WEIGHTS[eventLevel] || WEIGHTS.state;
-  const components = [];
-  const weights = [];
+function parseNelRankings(html) {
+  // The NEL table has rows like:
+  //   <td>1</td>
+  //   <td>...<a href="...nel_pilot.php?pid=ABC&year=YYYY">SKINNER, Jobe</a>...</td>
+  //   <td>899.7</td>  (score)
+  //
+  // Same forgiving two-step approach as our other parsers:
+  //   1. Find every nel_pilot.php anchor + extract pid + name
+  //   2. For each, find the most recent <td>NUMBER</td> before it = NEL rank
 
-  if (pilot.us != null) {
-    const s = Math.max(0, 100 - (pilot.us - 1) * 1.5);
-    components.push(s); weights.push(w.national);
+  const matches = [];
+  const anchorRe = /<a\s+[^>]*href="[^"]*nel_pilot\.php\?pid=([^&"]+)[^"]*"[^>]*>\s*([^<]+?)\s*<\/a>/gi;
+  let m;
+  while ((m = anchorRe.exec(html)) !== null) {
+    matches.push({
+      index: m.index,
+      pid: m[1].trim(),
+      name: m[2].trim().replace(/\s+/g, ' '),
+    });
   }
-  if (pilot.world != null) {
-    const s = Math.max(0, 100 - (pilot.world - 1) * 0.25);
-    components.push(s); weights.push(w.world);
+
+  const placeRe = /<td[^>]*>\s*(\d+)\s*\.?\s*<\/td>/gi;
+  const places = [];
+  while ((m = placeRe.exec(html)) !== null) {
+    places.push({ index: m.index, place: parseInt(m[1], 10) });
   }
 
-  // State = direct head-to-head results from this competition's history
-  const stateResults = (pilot.stateResults || []).filter(x => x != null);
-  if (stateResults.length > 0) {
-    const avg = stateResults.reduce((a, b) => a + b, 0) / stateResults.length;
-    const s = Math.max(0, 100 - (avg - 1) * 3.3);
-    components.push(s); weights.push(w.state);
-  }
-
-  // Broader form
-  const history = pilot.history || [];
-  if (history.length > 0) {
-    const h = [...history];
-    if (h.length >= 4) {
-      const worst = Math.max(...h);
-      h.splice(h.indexOf(worst), 1);
+  const seen = new Set();
+  const results = [];
+  for (const a of matches) {
+    if (seen.has(a.pid)) continue;
+    let bestPlace = null;
+    for (const p of places) {
+      if (p.index < a.index) {
+        if (!bestPlace || p.index > bestPlace.index) bestPlace = p;
+      }
     }
-    const recencyWeights = h.map((_, i) => Math.pow(0.85, i));
-    const wsum = recencyWeights.reduce((a, b) => a + b, 0);
-    const avgPlace = h.reduce((sum, p, i) => sum + p * recencyWeights[i], 0) / wsum;
-    const s = Math.max(0, 100 - (avgPlace - 1) * 2.0);
-    components.push(s); weights.push(w.form);
-  }
-
-  if (components.length === 0) return 12; // rookie
-  const total = components.reduce((sum, c, i) => sum + c * weights[i], 0);
-  const wtotal = weights.reduce((a, b) => a + b, 0);
-  return total / wtotal;
-}
-
-function placeProbabilities(score, nPilots = 31) {
-  const meanPlace = 2 + (100 - score) * 0.23;
-  const spread = 5.5 + (100 - score) * 0.07;
-  const probs = {};
-  for (let p = 1; p <= nPilots; p++) {
-    probs[p] = Math.exp(-Math.pow(p - meanPlace, 2) / (2 * spread * spread));
-  }
-  const total = Object.values(probs).reduce((a, b) => a + b, 0);
-  for (const p of Object.keys(probs)) probs[p] /= total;
-  return probs;
-}
-
-function oddsForPlace(probability) {
-  if (probability <= 0.0001) return 150.0;
-  const raw = 1 / probability;
-  let fair = raw * 0.92;
-  if (fair > 8) fair = 8 + Math.pow(fair - 8, 1.10);
-  return Math.round(Math.min(fair, 150.0) * 10) / 10;
-}
-
-// Calculate odds for every pilot at every position
-function calculateOdds(pilots, eventLevel = 'state') {
-  const nPilots = pilots.length;
-  return pilots.map(pilot => {
-    const score = skillScore(pilot, eventLevel);
-    const probs = placeProbabilities(score, nPilots);
-    const oddsByPlace = {};
-    for (let p = 1; p <= nPilots; p++) {
-      oddsByPlace[p] = oddsForPlace(probs[p]);
+    if (bestPlace && bestPlace.place > 0 && bestPlace.place < 500) {
+      if (results.some(r => r.usRank === bestPlace.place)) continue;
+      results.push({
+        usRank: bestPlace.place,
+        pid: a.pid,
+        name: a.name,
+      });
+      seen.add(a.pid);
     }
-    return {
-      ...pilot,
-      skillScore: Math.round(score * 10) / 10,
-      oddsByPlace,
-      top10Pct: Math.round(
-        Array.from({ length: Math.min(10, nPilots) }, (_, i) => probs[i + 1] || 0)
-          .reduce((a, b) => a + b, 0) * 100
-      ),
-    };
+  }
+  return results;
+}
+
+function normalizeName(name) {
+  return name.toLowerCase().replace(/[^a-z]/g, '');
+}
+
+export default async (req, context) => {
+  const user = getUserFromContext(context, req);
+  if (!user) return unauthorized();
+  if (!user.isAdmin) return forbidden();
+  if (req.method !== 'POST') return json({ error: 'method not allowed' }, 405);
+
+  const body = await req.json().catch(() => ({}));
+  const { competitionId, year } = body;
+  if (!competitionId) return json({ error: 'competitionId required' }, 400);
+
+  const useYear = year || new Date().getFullYear();
+  const nelUrl = `https://watchmefly.net/bfa/nel.php?year=${useYear}`;
+
+  let html;
+  let httpStatus;
+  try {
+    const r = await fetch(nelUrl, {
+      headers: {
+        'User-Agent': 'Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36',
+        'Accept': 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
+      },
+    });
+    httpStatus = r.status;
+    if (!r.ok) return json({ error: `BFA NEL page returned ${r.status}`, url: nelUrl }, 502);
+    html = await r.text();
+  } catch (ex) {
+    return json({ error: `Could not reach BFA NEL page: ${ex.message}` }, 502);
+  }
+
+  const rankings = parseNelRankings(html);
+  if (rankings.length === 0) {
+    const snippet = html.slice(0, 600).replace(/\s+/g, ' ');
+    return json({
+      error: 'No NEL rankings parsed from page',
+      hint: 'BFA NEL HTML structure may have changed. Try a different year.',
+      url: nelUrl,
+      httpStatus,
+      htmlLength: html.length,
+      htmlSnippet: snippet,
+    }, 422);
+  }
+
+  // Build lookup tables: pid -> rank, normalized_name -> rank
+  const rankByPid = {};
+  const rankByName = {};
+  for (const r of rankings) {
+    rankByPid[r.pid] = r.usRank;
+    rankByName[normalizeName(r.name)] = r.usRank;
+  }
+
+  // Load competition + match each competitor
+  const compStore = stores.competitions();
+  const comp = await compStore.get(competitionId, { type: 'json' });
+  if (!comp) return json({ error: 'Competition not found' }, 404);
+  if (!comp.competitors?.length) return json({ error: 'Competition has no pilots yet' }, 400);
+
+  const matched = [];
+  const unmatched = [];
+
+  for (const c of comp.competitors) {
+    let rank = null;
+    let matchMethod = null;
+
+    // Method 1: exact PID match (preferred)
+    if (c.wmfPid && rankByPid[c.wmfPid]) {
+      rank = rankByPid[c.wmfPid];
+      matchMethod = 'pid';
+    }
+
+    // Method 2: exact normalized name match
+    if (!rank) {
+      const n = normalizeName(c.name);
+      if (rankByName[n]) {
+        rank = rankByName[n];
+        matchMethod = 'name-exact';
+      }
+    }
+
+    // Method 3: fuzzy partial name match (one direction only to avoid false positives)
+    if (!rank) {
+      const n = normalizeName(c.name);
+      for (const [rn, rk] of Object.entries(rankByName)) {
+        if (n.length >= 8 && rn.includes(n)) {
+          rank = rk;
+          matchMethod = 'name-fuzzy';
+          break;
+        }
+        if (rn.length >= 8 && n.includes(rn)) {
+          rank = rk;
+          matchMethod = 'name-fuzzy';
+          break;
+        }
+      }
+    }
+
+    if (rank) {
+      c.us = rank;
+      matched.push({ name: c.name, usRank: rank, matchMethod });
+    } else {
+      unmatched.push({ name: c.name, wmfPid: c.wmfPid || null });
+    }
+  }
+
+  // Recalculate odds with the new ranking data
+  const eventLevel = comp.eventLevel || 'state';
+  const withOdds = calculateOdds(
+    comp.competitors.map(p => ({
+      num: p.number,
+      name: p.name,
+      photo: p.photo,
+      balloon: p.balloon,
+      balloonPhoto: p.balloonPhoto,
+      world: p.world,
+      us: p.us,
+      history: p.history,
+      stateResults: p.stateResults,
+      wmfPid: p.wmfPid,
+    })),
+    eventLevel
+  );
+
+  comp.competitors = comp.competitors.map((c, i) => ({
+    ...c,
+    skillScore: withOdds[i].skillScore,
+    top10Pct: withOdds[i].top10Pct,
+    oddsByPlace: withOdds[i].oddsByPlace,
+  }));
+
+  comp.updatedAt = Date.now();
+  await compStore.setJSON(competitionId, comp);
+
+  return json({
+    ok: true,
+    year: useYear,
+    nelEntriesParsed: rankings.length,
+    pilotsUpdated: matched.length,
+    matched,
+    unmatched,
+    note: matched.length > 0
+      ? `Updated ${matched.length} pilots with US National rankings. Odds recalculated.`
+      : 'No pilots matched — they may not be on the NEL for this year yet.',
   });
-}
-
-export { skillScore, placeProbabilities, oddsForPlace, calculateOdds };
+};

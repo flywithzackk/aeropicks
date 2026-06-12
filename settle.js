@@ -1,83 +1,157 @@
 import { getUserFromContext, unauthorized, forbidden, json, stores, uid } from './_shared.js';
-import { calculateOdds } from './_odds.js';
+
+// Test member simulator for end-to-end flow verification.
+//
+// POST /api/simulator { competitionId, count } — spawns `count` fake members with random bets
+// DELETE /api/simulator — wipes all simulated members (their bets, winnings, profiles)
+// GET /api/simulator?competitionId=X — returns count of simulated members for this comp
+
+const TEST_PREFIX = 'sim_'; // user IDs that start with this are simulated
+
+const FAKE_USERNAMES = [
+  'AeroAce', 'WindRider', 'BalloonBoss', 'SkyHigh42', 'CloudJumper',
+  'PilotPete', 'BurnerBob', 'AltitudeAnnie', 'BasketCase', 'ThermalThief',
+  'JetStreamJoe', 'DriftKing', 'CrosswindCarl', 'EnvelopeEd', 'ZephyrZach',
+  'TailwindTina', 'AviatorAva', 'PropPilot', 'CumulusKid', 'StratoStan',
+];
+
+const PHOTO_PLACEHOLDERS = [
+  'https://i.pravatar.cc/150?img=1',
+  'https://i.pravatar.cc/150?img=2',
+  'https://i.pravatar.cc/150?img=3',
+  'https://i.pravatar.cc/150?img=4',
+  'https://i.pravatar.cc/150?img=5',
+  'https://i.pravatar.cc/150?img=6',
+  'https://i.pravatar.cc/150?img=7',
+  'https://i.pravatar.cc/150?img=8',
+  'https://i.pravatar.cc/150?img=9',
+  'https://i.pravatar.cc/150?img=10',
+];
+
+function randomBetsForCompetition(competitors) {
+  // Place 3-7 random bets totaling ~700-1000 points
+  const numBets = 3 + Math.floor(Math.random() * 5);
+  const bets = [];
+  let remainingPoints = 1000;
+
+  for (let i = 0; i < numBets && remainingPoints > 50; i++) {
+    const pilot = competitors[Math.floor(Math.random() * competitors.length)];
+    if (!pilot.oddsByPlace) continue;
+    // Bias toward picking the best odds positions for each pilot (more realistic)
+    const sortedPlaces = Object.entries(pilot.oddsByPlace)
+      .sort((a, b) => Number(a[1]) - Number(b[1]))
+      .slice(0, 5)
+      .map(([place]) => Number(place));
+    const place = sortedPlaces[Math.floor(Math.random() * sortedPlaces.length)];
+    const points = Math.min(remainingPoints, 50 + Math.floor(Math.random() * 250));
+    const odds = pilot.overrideOdds?.[place] ?? pilot.oddsByPlace?.[place] ?? 0;
+    if (odds <= 0) continue;
+    bets.push({ pilotId: pilot.id, place, points, odds, status: 'pending' });
+    remainingPoints -= points;
+  }
+  return bets;
+}
 
 export default async (req, context) => {
   const user = getUserFromContext(context, req);
   if (!user) return unauthorized();
+  if (!user.isAdmin) return forbidden();
 
-  const store = stores.competitions();
   const url = new URL(req.url);
-  const id = url.searchParams.get('id');
+  const competitionId = url.searchParams.get('competitionId');
+
+  const compStore = stores.competitions();
+  const betsStore = stores.bets();
+  const profilesStore = stores.profiles();
+  const winningsStore = stores.winnings();
 
   if (req.method === 'GET') {
-    if (id) {
-      const comp = await store.get(id, { type: 'json' });
-      if (!comp) return json({ competition: null }, 404);
-      if (comp.status === 'draft' && !user.isAdmin) return json({ competition: null }, 404);
-      // Strip data members shouldn't see (skill scores, raw history etc - keep odds + display info)
-      if (!user.isAdmin) {
-        comp.competitors = (comp.competitors || []).map(c => ({
-          id: c.id, number: c.number, name: c.name, country: c.country,
-          balloon: c.balloon, balloonPhoto: c.balloonPhoto, photo: c.photo,
-          world: c.world, us: c.us,
-          oddsByPlace: c.overrideOdds || c.oddsByPlace,
-          top10Pct: c.top10Pct,
-        }));
-      }
-      return json({ competition: comp });
-    }
-    const { blobs } = await store.list();
-    const all = await Promise.all(blobs.map(b => store.get(b.key, { type: 'json' })));
-    const visible = all.filter(c => c && (user.isAdmin || c.status !== 'draft'));
-    return json({
-      competitions: visible.map(c => ({
-        id: c.id, name: c.name, location: c.location, dates: c.dates,
-        status: c.status, eventLevel: c.eventLevel || 'state',
-        description: c.description, competitorCount: c.competitors?.length || 0,
-        hasWildcard: !!c.wildcard,
-      })),
-    });
+    // Count existing simulated profiles
+    const { blobs } = await profilesStore.list();
+    const simCount = blobs.filter(b => b.key.startsWith(TEST_PREFIX)).length;
+    return json({ simulatedMembers: simCount });
   }
 
   if (req.method === 'POST') {
-    if (!user.isAdmin) return forbidden();
-    const body = await req.json();
-    const compId = body.id || uid();
-    const existing = body.id ? (await store.get(compId, { type: 'json' })) : null;
+    const body = await req.json().catch(() => ({}));
+    const { competitionId: compId, count = 10 } = body;
+    if (!compId) return json({ error: 'competitionId required' }, 400);
 
-    const eventLevelChanged = existing && body.eventLevel && body.eventLevel !== existing.eventLevel;
-
-    const comp = {
-      id: compId,
-      name: body.name,
-      location: body.location || '',
-      dates: body.dates || '',
-      eventLevel: body.eventLevel || existing?.eventLevel || 'state',
-      description: body.description || '',
-      status: body.status || 'draft',
-      wildcard: body.wildcard !== undefined ? body.wildcard : (existing?.wildcard || null),
-      competitors: existing?.competitors || [],
-      createdAt: existing?.createdAt || Date.now(),
-      updatedAt: Date.now(),
-    };
-
-    // If event level changed, re-run odds
-    if (eventLevelChanged && comp.competitors.length > 0) {
-      const recalc = calculateOdds(comp.competitors, comp.eventLevel);
-      comp.competitors = comp.competitors.map((c, i) => ({
-        ...c, skillScore: recalc[i].skillScore, top10Pct: recalc[i].top10Pct, oddsByPlace: recalc[i].oddsByPlace,
-      }));
+    const comp = await compStore.get(compId, { type: 'json' });
+    if (!comp) return json({ error: 'competition not found' }, 404);
+    if (!comp.competitors || comp.competitors.length === 0) {
+      return json({ error: 'competition has no pilots — seed it first' }, 400);
     }
 
-    await store.setJSON(compId, comp);
-    return json({ competition: comp });
+    const created = [];
+    const usedNames = new Set();
+    // Existing sim names
+    const { blobs: existingProfiles } = await profilesStore.list();
+    for (const b of existingProfiles) {
+      if (b.key.startsWith(TEST_PREFIX)) {
+        const p = await profilesStore.get(b.key, { type: 'json' });
+        if (p?.username) usedNames.add(p.username.toLowerCase());
+      }
+    }
+
+    for (let i = 0; i < Math.min(count, 20); i++) {
+      // Find an unused username
+      let username;
+      for (let tries = 0; tries < 30; tries++) {
+        const base = FAKE_USERNAMES[Math.floor(Math.random() * FAKE_USERNAMES.length)];
+        const suffix = Math.floor(Math.random() * 100);
+        const candidate = `${base}${suffix}`;
+        if (!usedNames.has(candidate.toLowerCase())) {
+          username = candidate;
+          usedNames.add(candidate.toLowerCase());
+          break;
+        }
+      }
+      if (!username) continue;
+
+      const userId = `${TEST_PREFIX}${uid()}`;
+      const photo = PHOTO_PLACEHOLDERS[Math.floor(Math.random() * PHOTO_PLACEHOLDERS.length)];
+
+      // Profile
+      await profilesStore.setJSON(userId, {
+        userId,
+        username,
+        photo,
+        email: `${username.toLowerCase()}@simulated.aeropicks`,
+        updatedAt: Date.now(),
+        simulated: true,
+      });
+
+      // Bets
+      const userBets = (await betsStore.get(userId, { type: 'json' })) || {};
+      const bets = randomBetsForCompetition(comp.competitors);
+      const totalWagered = bets.reduce((s, b) => s + b.points, 0);
+      userBets[compId] = {
+        bets,
+        wildcard: null,
+        remaining: 1000 - totalWagered,
+        placedAt: Date.now(),
+      };
+      await betsStore.setJSON(userId, userBets);
+
+      created.push({ userId, username, photo, betsPlaced: bets.length });
+    }
+
+    return json({ ok: true, created, count: created.length });
   }
 
   if (req.method === 'DELETE') {
-    if (!user.isAdmin) return forbidden();
-    if (!id) return json({ error: 'id required' }, 400);
-    await store.delete(id);
-    return json({ ok: true });
+    // Wipe all simulated members across stores
+    const { blobs: profileBlobs } = await profilesStore.list();
+    let removed = 0;
+    for (const b of profileBlobs) {
+      if (!b.key.startsWith(TEST_PREFIX)) continue;
+      await profilesStore.delete(b.key);
+      try { await betsStore.delete(b.key); } catch {}
+      try { await winningsStore.delete(b.key); } catch {}
+      removed++;
+    }
+    return json({ ok: true, removed });
   }
 
   return json({ error: 'method not allowed' }, 405);
