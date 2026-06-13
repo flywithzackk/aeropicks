@@ -161,12 +161,14 @@ export default async (req, context) => {
       us: p.us,
       history: p.history,
       stateResults: p.stateResults,
+      wmfPid: p.pid, // preserve WatchMeFly PID for later cross-referencing
     })),
     eventLevel
   );
 
   comp.competitors = withOdds.map(p => ({
     id: uid(),
+    wmfPid: p.wmfPid || null,
     number: String(p.num || ''),
     name: p.name,
     photo: p.photo,

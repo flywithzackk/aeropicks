@@ -346,6 +346,62 @@ function CompetitionsTab() {
                           >Import from WatchMeFly</button>
                         </>
                       )}
+                      {(c.competitorCount ?? 0) > 0 && (
+                        <>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={async () => {
+                              if (!confirm(`Pull US National rankings from BFA for "${c.name}"? This will update each pilot's ranking and recalculate odds.`)) return;
+                              showToast('Pulling rankings from BFA…');
+                              const res = await authFetch('/api/scrape-bfa-rankings', {
+                                method: 'POST',
+                                body: JSON.stringify({ competitionId: c.id }),
+                              });
+                              const data = await res.json();
+                              if (res.ok) {
+                                let msg = `Updated ${data.pilotsUpdated} pilots with rankings`;
+                                if (data.unmatched?.length) msg += ` · ${data.unmatched.length} unmatched`;
+                                showToast(msg);
+                                load();
+                              } else {
+                                const details = [
+                                  data.error || 'Failed',
+                                  data.hint ? `\nHint: ${data.hint}` : '',
+                                  data.url ? `\nURL hit: ${data.url}` : '',
+                                  data.httpStatus !== undefined ? `\nHTTP status: ${data.httpStatus}` : '',
+                                  data.htmlSnippet ? `\n\n${data.htmlSnippet}` : '',
+                                ].filter(Boolean).join('');
+                                alert(details);
+                                showToast(data.error || 'Failed', 'error');
+                              }
+                            }}
+                            style={{ marginRight: 6, color: 'var(--electric)', borderColor: 'var(--electric)' }}
+                            title="Pull US National rankings from BFA NEL list"
+                          >Pull Rankings</button>
+                          <button
+                            className="btn btn-ghost btn-sm"
+                            onClick={async () => {
+                              if (!confirm(`Copy pilot data (rankings + history) from your past Aeropicks competitions into "${c.name}"? Empty fields only — won't overwrite existing data.`)) return;
+                              showToast('Copying from previous events…');
+                              const res = await authFetch('/api/copy-pilot-data', {
+                                method: 'POST',
+                                body: JSON.stringify({ competitionId: c.id }),
+                              });
+                              const data = await res.json();
+                              if (res.ok) {
+                                let msg = `Updated ${data.pilotsUpdated} pilots`;
+                                if (data.unmatched?.length) msg += ` · ${data.unmatched.length} not found in past events`;
+                                showToast(msg);
+                                load();
+                              } else {
+                                showToast(data.error || 'Failed', 'error');
+                              }
+                            }}
+                            style={{ marginRight: 6, color: 'var(--coral)', borderColor: 'var(--coral)' }}
+                            title="Copy ranks + history from previous Aeropicks competitions"
+                          >Copy from Past Events</button>
+                        </>
+                      )}
                       {c.status === 'draft' && <button className="btn btn-ghost btn-sm" onClick={() => setStatus(c, 'live')} style={{ marginRight: 6 }}>Open</button>}
                       {c.status === 'live' && <button className="btn btn-ghost btn-sm" onClick={() => setStatus(c, 'locked')} style={{ marginRight: 6 }}>Lock</button>}
                       {c.status === 'locked' && <button className="btn btn-ghost btn-sm" onClick={() => setStatus(c, 'live')} style={{ marginRight: 6 }}>Reopen</button>}
